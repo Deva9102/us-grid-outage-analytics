@@ -1,0 +1,54 @@
+state_fips,state_abbr,state_name,census_region,census_division,fema_region
+01,AL,Alabama,South,East South Central,IV
+02,AK,Alaska,West,Pacific,X
+04,AZ,Arizona,West,Mountain,IX
+05,AR,Arkansas,South,West South Central,VI
+06,CA,California,West,Pacific,IX
+08,CO,Colorado,West,Mountain,VIII
+09,CT,Connecticut,Northeast,New England,I
+10,DE,Delaware,South,South Atlantic,III
+11,DC,District of Columbia,South,South Atlantic,III
+12,FL,Florida,South,South Atlantic,IV
+13,GA,Georgia,South,South Atlantic,IV
+15,HI,Hawaii,West,Pacific,IX
+16,ID,Idaho,West,Mountain,X
+17,IL,Illinois,Midwest,East North Central,V
+18,IN,Indiana,Midwest,East North Central,V
+19,IA,Iowa,Midwest,West North Central,VII
+20,KS,Kansas,Midwest,West North Central,VII
+21,KY,Kentucky,South,East South Central,IV
+22,LA,Louisiana,South,West South Central,VI
+23,ME,Maine,Northeast,New England,I
+24,MD,Maryland,South,South Atlantic,III
+25,MA,Massachusetts,Northeast,New England,I
+26,MI,Michigan,Midwest,East North Central,V
+27,MN,Minnesota,Midwest,West North Central,V
+28,MS,Mississippi,South,East South Central,IV
+29,MO,Missouri,Midwest,West North Central,VII
+30,MT,Montana,West,Mountain,VIII
+31,NE,Nebraska,Midwest,West North Central,VII
+32,NV,Nevada,West,Mountain,IX
+33,NH,New Hampshire,Northeast,New England,I
+34,NJ,New Jersey,Northeast,Middle Atlantic,II
+35,NM,New Mexico,West,Mountain,VI
+36,NY,New York,Northeast,Middle Atlantic,II
+37,NC,North Carolina,South,South Atlantic,IV
+38,ND,North Dakota,Midwest,West North Central,VIII
+39,OH,Ohio,Midwest,East North Central,V
+40,OK,Oklahoma,South,West South Central,VI
+41,OR,Oregon,West,Pacific,X
+42,PA,Pennsylvania,Northeast,Middle Atlantic,III
+44,RI,Rhode Island,Northeast,New England,I
+45,SC,South Carolina,South,South Atlantic,IV
+46,SD,South Dakota,Midwest,West North Central,VIII
+47,TN,Tennessee,South,East South Central,IV
+48,TX,Texas,South,West South Central,VI
+49,UT,Utah,West,Mountain,VIII
+50,VT,Vermont,Northeast,New England,I
+51,VA,Virginia,South,South Atlantic,III
+53,WA,Washington,West,Pacific,X
+54,WV,West Virginia,South,South Atlantic,III
+55,WI,Wisconsin,Midwest,East North Central,V
+56,WY,Wyoming,West,Mountain,VIII
+72,PR,Puerto Rico,Territory,Territory,II
+78,VI,United States Virgin Islands,Territory,Territory,II
