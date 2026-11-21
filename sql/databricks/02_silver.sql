@@ -2,11 +2,13 @@
 -- 02_silver.sql
 -- Silver layer: one denominator table and one unified outage table.
 --
---   dim_county_customers  one customer denominator per county for all years (D13)
+--   dim_county_customers  one customer denominator per county for all years (D13, D21)
 --   silver_outages        all EAGLE-I years, cleaned, partitioned by year and state
 --
 -- Rule numbers refer to docs/decisions.md. The same logic is tested locally in
 -- scripts/test_silver_duckdb.py; keep the two in step.
+--
+-- Runs after 02_silver_sources.sql: the D21 calibration reads silver_eia_state_customers (D26).
 -- =============================================================================
 
 -- Raw timestamps carry no zone and are UTC (D1). Fixing the session zone makes
@@ -18,16 +20,17 @@ USE SCHEMA outages;
 
 
 -- -----------------------------------------------------------------------------
--- dim_county_customers (D5, D9, D12, D13)
+-- dim_county_customers (D5, D9, D12, D13, D21)
 -- -----------------------------------------------------------------------------
 
 CREATE OR REPLACE TABLE dim_county_customers (
     fips_code            STRING  NOT NULL COMMENT '5-digit county FIPS',
     customers            BIGINT           COMMENT 'One denominator for all years; NULL if none (has_denominator = false)',
     denominator_source   STRING           COMMENT 'total_customers_2024, max_mcc_2024, mcc, or NULL',
-    denominator_mismatch BOOLEAN NOT NULL COMMENT 'True when MCC and 2024 total_customers differ by more than 2x (D12)'
+    denominator_mismatch BOOLEAN NOT NULL COMMENT 'True when MCC and 2024 total_customers differ by more than 2x (D12)',
+    calibration_factor   DOUBLE  NOT NULL COMMENT 'State D13 total / EIA-861 2024 total where above 1.25, else 1.0 (D21)'
 )
-COMMENT 'Customer denominator per county, decisions D12 and D13';
+COMMENT 'Customer denominator per county, decisions D12, D13 and D21';
 
 INSERT OVERWRITE dim_county_customers
 WITH
@@ -69,22 +72,49 @@ compared AS (
     FROM eaglei_counties AS c
     LEFT JOIN totals_2024 AS t ON t.fips_code = c.fips_code
     LEFT JOIN mcc         AS m ON m.fips_code = c.fips_code
-)
+),
 -- Fallback order (D13): 2024 value with the D12 rule, then MCC, then none.
+d13 AS (
+    SELECT
+        fips_code,
+        CASE
+            WHEN is_mismatch                      THEN GREATEST(total_customers_2024, mcc_customers)
+            WHEN total_customers_2024 IS NOT NULL THEN total_customers_2024
+            ELSE mcc_customers
+        END AS customers,
+        CASE
+            WHEN is_mismatch                      THEN 'max_mcc_2024'
+            WHEN total_customers_2024 IS NOT NULL THEN 'total_customers_2024'
+            WHEN mcc_customers IS NOT NULL        THEN 'mcc'
+        END AS denominator_source,
+        is_mismatch AS denominator_mismatch
+    FROM compared
+),
+-- State totals of the D13 denominators, compared with EIA-861 2024 customers (D21).
+state_totals AS (
+    SELECT r.state_abbr, SUM(d.customers) AS d13_customers
+    FROM d13 AS d
+    INNER JOIN bronze_state_regions AS r ON r.state_fips = LEFT(d.fips_code, 2)
+    GROUP BY r.state_abbr
+),
+-- Scale a state down only where it exceeds EIA by more than 25%; never scale up (D21).
+factors AS (
+    SELECT
+        s.state_abbr,
+        CASE WHEN s.d13_customers > 1.25 * e.customers THEN s.d13_customers / e.customers ELSE 1.0 END AS calibration_factor
+    FROM state_totals AS s
+    LEFT JOIN silver_eia_state_customers AS e ON e.state_abbr = s.state_abbr AND e.data_year = 2024
+)
+-- Each county keeps its share of the state; still one denominator per county (D13).
 SELECT
-    fips_code,
-    CASE
-        WHEN is_mismatch                      THEN GREATEST(total_customers_2024, mcc_customers)
-        WHEN total_customers_2024 IS NOT NULL THEN total_customers_2024
-        ELSE mcc_customers
-    END AS customers,
-    CASE
-        WHEN is_mismatch                      THEN 'max_mcc_2024'
-        WHEN total_customers_2024 IS NOT NULL THEN 'total_customers_2024'
-        WHEN mcc_customers IS NOT NULL        THEN 'mcc'
-    END AS denominator_source,
-    is_mismatch AS denominator_mismatch
-FROM compared;
+    d.fips_code,
+    CAST(ROUND(d.customers / COALESCE(f.calibration_factor, 1.0)) AS BIGINT) AS customers,
+    d.denominator_source,
+    d.denominator_mismatch,
+    CAST(COALESCE(f.calibration_factor, 1.0) AS DOUBLE) AS calibration_factor
+FROM d13 AS d
+LEFT JOIN bronze_state_regions AS r ON r.state_fips = LEFT(d.fips_code, 2)
+LEFT JOIN factors AS f ON f.state_abbr = r.state_abbr;
 
 
 -- -----------------------------------------------------------------------------
@@ -186,7 +216,8 @@ LEFT JOIN  dim_county_customers AS k ON k.fips_code  = d.fips_code;
 -- -----------------------------------------------------------------------------
 
 -- Denominator sources: total_customers_2024 2,687 / max_mcc_2024 372 / mcc 2 / NULL 2
-SELECT denominator_source, COUNT(*) AS counties, SUM(customers) AS customers
+SELECT denominator_source, COUNT(*) AS counties, SUM(customers) AS customers,
+       COUNT_IF(calibration_factor > 1) AS calibrated_counties
 FROM dim_county_customers
 GROUP BY denominator_source
 ORDER BY counties DESC;
