@@ -52,6 +52,9 @@ Row counts come from DuckDB runs against the raw EAGLE-I files
 | D44 | County rankings: 50 states and DC; PR and VI reporting units reported separately, unranked | Gold | 2026-11-21 |
 | D45 | Footnote county-years with capped share above 25% and peak above 3x customers | Gold | 2026-11-21 |
 | D46 | Reviewed ranking exclusions file and entry criteria; Austin TX 2023 stays ranked | Gold | 2026-11-21 |
+| D47 | Every tunable value in config/pipeline.yml; SQL reads it through placeholders | All | 2026-11-21 |
+| D48 | Quality gates after each layer; results in gold_quality_results; a failed check stops the run | All | 2026-11-21 |
+| D49 | Step logging to logs/, Makefile targets, CSV export split by year above 50 MB | All | 2026-11-21 |
 
 ---
 
@@ -1770,6 +1773,86 @@ comes from shared Houston-area storms. No pair in the table meets the criteria; 
 cases of 2024 are caught by D45 instead. The file starts with a header only.
 
 **Rows affected:** none today (0 entries).
+
+## D47. Every tunable value lives in config/pipeline.yml
+
+**What:** `config/pipeline.yml` holds every value a reviewer might tune: years; catalog, schema and
+volume; the D12 mismatch ratio; the D21 calibration ratio, its EIA year and the D36 peak-skip ratio;
+the D18 threshold share, the 100-customer floor and the 10,000-customer outage requirement; the
+D17 gap rule; the D19 dropout shares and recovery window; the D22 coverage minimum; the D11 ranking
+floor and the 51 ranked jurisdictions (D43); the D37/D42 storm window; the D40 OE-417 window and
+bands; the D45 footnote thresholds; the D46 entry criteria; the D32 size bands and D39 utility
+lists; quality tolerances and expected row counts (D48); export settings (D49).
+
+The SQL files reference values as `${section.key}`. `scripts/pipeline_config.py` loads and validates
+the file (types and ranges, so a typo fails before any SQL runs), adds derived values (volume path,
+gap rule in 15-minute runs, percentage labels) and substitutes them before a statement is sent to
+Databricks or translated for DuckDB. A placeholder without a value stops the run. The tests and
+scripts (`run_databricks.py`, the DuckDB tests, `exclusion_evidence.py`, the download and profile
+scripts, the sensitivity test's 10,000-customer check) read the same file.
+
+**Not in the config, on purpose:** constants that define the data rather than tune it: the 15-minute
+EAGLE-I collection run (`RUN_MINUTES`, and the 0.25 hours per reading that follows from it), the
+per-1,000 normalisation, 5-digit FIPS, the Excel date epoch, NOAA's K/M/B damage suffixes. The
+per-year Bronze statements also stay in `01_bronze.sql`, because the EAGLE-I column layout differs
+by year (D2); the runner stops if a configured year has no Bronze statement.
+
+**Why:** Thresholds were spread across nine SQL files and several scripts; changing one meant finding
+every copy (the D18 share was also parsed out of the SQL by regex). One validated file makes each
+rule visible, reviewable and changeable in one place.
+
+**Rows affected:** none. With the current values, every rendered SQL statement is identical to the
+previous SQL apart from comments (checked file by file), and the DuckDB and Databricks runs
+reproduce every row count and the top 10 events.
+
+## D48. Data quality gates after each layer
+
+**What:** `sql/databricks/90_quality_checks.sql` holds 109 checks in three sections (Bronze, Silver,
+Gold). Each statement returns `layer, check_name, observed, expected, passed`. The checks:
+- row counts of all 43 tables within 1% of the verified run (`quality.row_count_tolerance`);
+- no duplicate or NULL primary keys in every Silver and Gold table;
+- valid ranges: `customers_out >= 0`, 5-digit FIPS, readings on the 15-minute grid, years in the
+  config, positive durations and reading counts, capped customer-hours <= raw, shares and coverage
+  between 0 and 1, storm `event_weight` in (0, 1], no negative SAIDI/SAIFI;
+- the event rules: every threshold >= the floor and < 10,000 (D18), dropouts inside the D19 rule,
+  no overlapping events in a county, and every qualifying reading in exactly one event (each reading
+  falls inside the latest event that started at or before it, and the event reading counts add up
+  to the qualifying readings);
+- calibrated state totals equal the EIA-861 totals within half a customer per county (rounding,
+  D21), and no calibrated county below its peak unless D36 skipped its floor (D35);
+- rankings hold only the 50 states and DC and no county under 1,000 customers (D11, D43, D44);
+- every unranked county-year has a footnote reason, D45/D46 footnotes have evidence, D45 rows meet
+  both thresholds, and the footnote list matches the unranked rows (D45, D46);
+- referential integrity between facts and dimensions on FIPS, event, storm and incident keys.
+
+`scripts/quality_checks.py` runs the checks on Databricks or on a local DuckDB build. The pipeline
+runner runs each layer's section right after that layer's SQL files; a failed check stops the run
+before the next layer is built. Every result row is appended to `gold_quality_results` with the run
+timestamp (DuckDB runs write `logs/quality_results_<timestamp>.csv`).
+
+**Why:** Until now the runner compared row counts and a few fixtures only after everything was built.
+Checking each layer's invariants before the next is built stops a bad load from reaching the
+rankings, and the results table keeps a history of every run.
+
+The gates were tested by injecting faults into a local build (a deleted event, a raised threshold,
+a county moved below its peak, a removed footnote reason, territory rows given a rank): each fault
+failed its check.
+
+**Rows affected:** none; all 109 checks pass in DuckDB and on Databricks.
+
+## D49. Run logging, Makefile and Power BI export
+
+**What:** The runners log each step (start time, duration, row count, status) to
+`logs/<run>_<timestamp>.log` (gitignored) and print a summary table. A Makefile runs the project with
+`setup`, `download`, `profile`, `test`, `pipeline`, `quality`, `export`, `all` and `clean` (README,
+Setup). `scripts/export_gold.py` writes the tables in `export.tables` to `data/gold_exports/`; a table
+whose CSV would exceed 50 MB is written as one file per year (`gold_outage_events` and
+`gold_event_storm_match` are about 33 MB and 18 MB per year).
+
+**Why:** One command rebuilds everything from a fresh clone, and the logs show where time goes and
+what each step produced.
+
+**Rows affected:** none.
 
 ---
 
