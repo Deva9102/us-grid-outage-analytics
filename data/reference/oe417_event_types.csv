@@ -1,0 +1,44 @@
+event_type_key,category,multiple_types,rows_2022_2023
+cyber event,cyber,N,12
+cyber event (information technology),cyber,N,1
+generator loss or failure,equipment_failure,N,9
+transmission equipment failure,equipment_failure,N,6
+failure at high voltage substation or switchyard,equipment_failure,N,2
+failure at high voltage substation or switchyard - other,equipment_failure,Y,2
+unknown - failure at high voltage substation or switchyard,equipment_failure,Y,2
+suspicious activity - transmission equipment failure,equipment_failure,Y,1
+fuel supply deficiency,fuel_supply,N,5
+fuel supply emergency,fuel_supply,N,1
+generation inadequacy,generation_inadequacy,N,4
+other,other,N,28
+actual physical attack/vandalism,physical_attack,Y,23
+actual physical attack,physical_attack,N,15
+physical attack - vandalism - suspicious activity,physical_attack,Y,5
+physical attack - vandalism - other,physical_attack,Y,2
+physical attack - vandalism,physical_attack,Y,2
+physical attack,physical_attack,N,2
+sabotage,physical_attack,N,1
+physical attack - other,physical_attack,Y,1
+physical attack - vandalism - theft - suspicious activity,physical_attack,Y,1
+physical attack - generator loss or failure,physical_attack,Y,1
+suspicious activity,suspicious_activity,N,117
+threat of physical attack,suspicious_activity,N,2
+system operations,system_operations,N,105
+transmission interruption,transmission_interruption,N,38
+unknown,unknown,N,9
+vandalism,vandalism_theft,N,139
+vandalism - theft,vandalism_theft,Y,14
+vandalism - suspicious activity,vandalism_theft,Y,3
+theft,vandalism_theft,N,3
+vandalism - theft - suspicious activity,vandalism_theft,Y,2
+unknown - vandalism,vandalism_theft,Y,1
+theft - suspicious activity,vandalism_theft,Y,1
+theft - other,vandalism_theft,Y,1
+vandalism - theft - suspicious activity - other,vandalism_theft,Y,1
+severe weather,weather,N,117
+weather or natural disaster,weather,N,43
+severe weather/transmission interruption,weather,Y,8
+weather or natural disaster - other,weather,Y,3
+severe weather/distribution interruption,weather,Y,2
+failure at high voltage substation or switchyard - weather or natural disaster,weather,Y,2
+sever weather,weather,N,1
