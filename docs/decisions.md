@@ -40,6 +40,7 @@ Row counts come from DuckDB runs against the raw EAGLE-I files
 | D32 | EIA-861 Silver: data rows, reporting standard, customers, size bands | Silver | 2026-11-21 |
 | D33 | OE-417 Silver parsing: rows, dates, restoration, area tokens | Silver | 2026-11-21 |
 | D34 | OE-417 county names matched to FIPS once, in Silver | Silver | 2026-11-21 |
+| D35 | Calibrated denominators never below a county's peak customers out (resolves Q4) | Silver | 2026-11-21 |
 
 ---
 
@@ -796,6 +797,10 @@ event ID and customer-hours (D17).
 
 ## D21. Calibrate denominators to EIA-861 state totals
 
+**Amended by D35:** counties are no longer scaled by one state factor; each is held at or above its
+peak customers out, and the rest of the state absorbs the difference. The tables below are the
+original D21 measurements.
+
 **What:** For each state, compare the sum of D13 county denominators with the EIA-861 2024 state
 customer total (Sales to Ultimate Customers, Parts A + C + D only, never Part B; see D23). Where
 the ratio D13 / EIA is above 1.25, divide every county denominator in that state by the ratio, so
@@ -1215,6 +1220,80 @@ downstream joins on FIPS, as the project rules require.
 5 names), and 2 do not: Kearney and Wayne in Nebraska, counties without EAGLE-I data. 507 incidents
 end up with at least one county.
 
+## D35. Peak floor for calibrated denominators (resolves Q4)
+
+**What:** In the states D21 calibrates, no county's denominator may fall below its peak
+`customers_out`, the highest reading EAGLE-I reported for it in 2022-2024. Counties that would fall
+below are held at their peak. The remaining reduction is spread proportionally over the state's other
+counties, so the state total still equals EIA-861 2024, and the process repeats until no county is
+below its floor.
+- Dropout readings (D19) are ignored by construction: a dropout is a fall of more than 90%, so it is
+  never a county's maximum.
+- The repeated process has an exact solution. The counties held at their floor are always those
+  with the highest peak / D13 ratio, and the loop stops at the smallest such set for which every
+  other county stays at or above its floor. `02_silver.sql` finds that set directly with window sums
+  (CTEs `prefixes` and `solution`). `scripts/test_sources_duckdb.py` also runs the literal loop and
+  confirms both give the same value for all 246 counties (2-3 rounds per state).
+- `dim_county_customers` now has `calibration_factor` = D13 value / final value per county (the D13
+  value stays derivable as `customers x calibration_factor`), `state_calibration_factor` (the D21
+  state ratio), and `peak_floor_applied`.
+
+**Why:** D21's single state factor pushed 9 counties below outages they actually reported, so their
+readings were capped and flagged as overcounts. South Carolina's three largest Helene counties were
+among them (Q4). A county cannot have had more customers out than it has customers, so its peak is a
+hard lower bound. The state total still comes from EIA. Option C (splitting the EIA total by
+EIA-861 Service Territory) is rejected: Service Territory lists which counties a utility serves but
+has no customer counts per county, so it cannot split a total.
+
+**Rows affected:** 246 counties in 5 states; **12 are held at their peak**, and the other 234 are
+rescaled.
+
+| FIPS | County | State | D13 | D21 only | D35 | Peak (UTC) | Peak / D13 | Flag |
+|---|---|---|---|---|---|---|---|---|
+| 15007 | Kauai | HI | 35,024 | 26,579 | 27,853 | 27,853 (2024-07-11 07:00) | 0.80 | |
+| 25019 | Nantucket | MA | 6,451 | 3,200 | 5,764 | 5,764 (2022-01-29 16:30) | 0.89 | |
+| 29510 | St. Louis city | MO | 107,523 | 83,281 | 83,685 | 83,685 (2023-07-02 07:00) | 0.78 | |
+| 45045 | Greenville | SC | 301,949 | 157,234 | 270,050 | 270,050 (2024-09-27 22:00) | 0.89 | |
+| 45083 | Spartanburg | SC | 256,231 | 133,428 | 183,816 | 183,816 (2024-09-28 21:15) | 0.72 | |
+| 45007 | Anderson | SC | 158,516 | 82,544 | 106,940 | 106,940 (2024-09-27 23:45) | 0.67 | |
+| 45073 | Oconee | SC | 77,419 | 40,315 | 37,716 | 37,716 (2024-09-27 15:00) | 0.49 | |
+| 45081 | Saluda | SC | 28,065 | 14,614 | 15,102 | 15,102 (2024-09-28 18:30) | 0.54 | |
+| 45023 | Chester | SC | 24,323 | 12,666 | 12,625 | 12,625 (2024-09-27 18:00) | 0.52 | |
+| 45001 | Abbeville | SC | 20,118 | 10,476 | 9,954 | 9,954 (2024-09-28 23:30) | 0.49 | |
+| 45065 | McCormick | SC | 10,529 | 5,483 | 6,369 | 6,369 (2024-10-01 23:45) | 0.60 | |
+| 46063 | Harding | SD | 584 | 458 | 1,532 | 1,532 (2024-11-18 21:15) | **2.62** | possible misattribution |
+
+The 8 South Carolina floors all fall in the Hurricane Helene days (2024-09-27 to 10-01).
+
+Misattribution checks:
+- **Peak above the uncalibrated denominator:** only Harding, SD. Its peak of 1,532 is 2.6 times its
+  reported `total_customers` of 584, lasted 1.5 hours (1,532 then 1,464 for five readings), and is the
+  only time it exceeded 632. That looks like another county's or utility's outage assigned to
+  Harding. See Q5.
+- **Isolated spike** (peak more than twice both neighbouring readings): none. Every floored peak is
+  sustained; for example, Greenville spent 515 readings at or above half its peak.
+
+Effects (DuckDB, all years; D13 = uncalibrated, D21 = uniform scaling, D35 = this rule):
+
+| State | Events D13 / D21 / D35 | Overcount rows D13 / D21 / D35 | Customer-hours M, D13 / D21 / D35 |
+|---|---|---|---|
+| HI | 1,372 / 1,476 / 1,477 | 0 / 1 / 0 | 9.18 / 9.42 / 9.42 |
+| MA | 1,773 / 3,020 / 3,020 | 0 / 37 / 0 | 22.47 / 26.44 / 26.45 |
+| MO | 11,055 / 11,634 / 11,627 | 0 / 4 / 0 | 35.68 / 36.20 / 36.20 |
+| SC | 6,805 / 8,806 / 8,742 | 0 / 1,502 / 0 | 154.24 / 145.68 / 156.13 |
+| SD | 1,751 / 1,789 / 1,790 | 15 / 39 / 0 | 4.16 / 4.20 / 4.20 |
+
+- National events: 446,331 under D21 become **446,262** (149,695 / 144,748 / 151,819). Dropouts:
+  19,195 become 19,190.
+- D4 overcount rows nationally: 1,878 / 369 / 9,940 under D21 become **1,818 / 365 / 8,421**,
+  below even the uncalibrated 1,820 / 365 / 8,434.
+- D11: counties under 1,000 customers: 41 under D21, 40 under D35 (Harding moves from 458 to 1,532).
+- **Top 10:** the same storms in the same order as without calibration. Greenville is back to
+  33.81 M customer-hours (27.06 M under D21) and Spartanburg to 25.64 M (22.54 M), so Spartanburg is
+  #9 again ahead of Buncombe. They are 0.002% and 0.05% above the uncalibrated values, because the
+  lower state factor slightly lengthens their events. The event IDs of the two SC events change
+  (45045-00330, 45083-00354), because more events now precede them in those counties.
+
 ---
 
 ## Open questions
@@ -1232,14 +1311,13 @@ To break down before the storm match is built:
 - Event type labels: hurricane impacts are often recorded as Tropical Storm, Storm Surge/Tide,
   High Wind or Flash Flood, in zones rather than counties.
 
-**Q4. D21 uniform scaling pushes some counties below their own reported peaks.** 9 of 246 calibrated
-counties end below the largest outage EAGLE-I ever reported there; South Carolina's three largest
-Helene counties (Greenville, Spartanburg, Anderson) are among them, and SC gains 1,502 overcount
-flags. Options:
-- A. Keep D21 as is and footnote SC.
-- B. Floor each calibrated county at its highest reported outage, and spread the remaining
-  reduction over the other counties of the state.
-- C. Split the EIA state total across counties using EIA-861 Service Territory (utilities per county)
-  instead of EAGLE-I's shares.
+**Q4.** Resolved in D35 (option B; option C rejected).
 
-B is the smallest change that keeps every real peak possible.
+**Q5. Harding County, SD (46063): floor from a likely misattributed peak.** D35 holds Harding at 1,532
+customers, its peak on 2024-11-18 (1.5 hours), although its reported `total_customers` is 584 and it
+never otherwise exceeded 632. Its denominator rises 2.6x and it moves above the D11 cutoff of 1,000.
+Options:
+- A. Keep D35 as is.
+- B. Skip the floor when the peak exceeds the county's uncalibrated denominator by more than 1.25x;
+  Harding is the only county affected today.
+- C. Treat such a short over-denominator peak as misattributed and exclude it in Silver.
