@@ -2,7 +2,9 @@
 -- 03_gold_reliability.sql
 -- Gold layer: reliability rankings. Runs after 03_gold_coverage.sql (D26).
 --
---   gold_county_reliability          outage hours per 1,000 customers per county and year (D38)
+--   gold_unit_reliability            outage hours per 1,000 customers per reporting unit and year, unranked (D38, D44)
+--   gold_county_reliability          the same for counties of the 50 states and DC, ranked (D38, D44)
+--   gold_territory_unit_reliability  the same for PR PREPA regions and VI districts, unranked (D44)
 --   gold_state_reliability           the same per state, 50 states and DC, with D22 coverage (D38, D43)
 --   gold_territory_reliability       the same for Puerto Rico and the Virgin Islands, unranked (D43)
 --   gold_utility_reliability         EIA-861 SAIDI / SAIFI ranked within size bands, IEEE 1366 only (D39)
@@ -18,8 +20,8 @@ USE CATALOG workspace;
 USE SCHEMA outages;
 
 
-CREATE OR REPLACE TABLE gold_county_reliability
-COMMENT 'Outage hours per 1,000 customers per county and year, calibrated denominators, ranked where eligible (D38)'
+CREATE OR REPLACE TABLE gold_unit_reliability
+COMMENT 'Outage hours per 1,000 customers per EAGLE-I reporting unit and year, unranked base for counties and territories (D38, D44)'
 AS
 WITH
 years AS (
@@ -73,18 +75,46 @@ rated AS (
     LEFT JOIN names  AS n ON n.fips_code = c.fips_code
     LEFT JOIN gold_state_coverage AS s ON s.state_abbr = c.state_abbr
 )
+SELECT * FROM rated;
+
+
+CREATE OR REPLACE TABLE gold_county_reliability
+COMMENT 'Outage hours per 1,000 customers per county and year, 50 states and DC, ranked where eligible (D38, D44)'
+AS
+-- Counties of the 50 states and DC only; territory reporting units have their own table (D44).
 -- RANK: 1 = most outage hours per 1,000 customers; ties share a rank (D38).
 SELECT
     *,
     CASE WHEN ranking_eligible
          THEN RANK() OVER (PARTITION BY year, ranking_eligible ORDER BY outage_hours_per_1000_customers DESC) END AS national_rank,
     CASE WHEN ranking_eligible
-         THEN RANK() OVER (PARTITION BY year, state_abbr, ranking_eligible ORDER BY outage_hours_per_1000_customers DESC) END AS state_rank,
+         THEN RANK() OVER (PARTITION BY year, state_abbr, ranking_eligible ORDER BY outage_hours_per_1000_customers DESC) END AS state_rank
+FROM gold_unit_reliability
+WHERE census_region <> 'Territory';
+
+
+CREATE OR REPLACE TABLE gold_territory_unit_reliability
+COMMENT 'Outage hours per 1,000 customers per year for the PR PREPA regions and VI districts, same metrics, unranked (D44)'
+AS
+-- Puerto Rico reports by PREPA operating region and the Virgin Islands by island; these are not
+-- counties, so they are reported with the same metrics but not ranked (D44).
+SELECT
+    year,
+    fips_code,
+    county AS reporting_unit,
+    state_abbr,
+    state_name,
+    customers,
+    events,
+    customer_hours_lost,
+    max_peak_customers_out,
+    outage_hours_per_1000_customers,
     CASE state_abbr
         WHEN 'PR' THEN 'PREPA operating region, reported under the FIPS of its namesake municipio'
-        WHEN 'VI' THEN 'Island'
+        WHEN 'VI' THEN 'Island district'
     END AS geography_note
-FROM rated;
+FROM gold_unit_reliability
+WHERE census_region = 'Territory';
 
 
 CREATE OR REPLACE TABLE gold_state_reliability
@@ -104,7 +134,7 @@ states AS (
         SUM(customer_hours_lost)                                        AS customer_hours_lost,
         SUM(CASE WHEN customers IS NOT NULL THEN customer_hours_lost END) AS customer_hours_with_denominator,
         SUM(customers)                                                  AS customers
-    FROM gold_county_reliability
+    FROM gold_unit_reliability
     WHERE census_region <> 'Territory'
     GROUP BY year, state_abbr
 )
@@ -147,7 +177,7 @@ territories AS (
         SUM(CASE WHEN customers IS NOT NULL THEN customer_hours_lost END) AS customer_hours_with_denominator,
         SUM(customers)                                                  AS customers,
         COUNT(*)                                                        AS reporting_units
-    FROM gold_county_reliability
+    FROM gold_unit_reliability
     WHERE census_region = 'Territory'
     GROUP BY year, state_abbr
 )
