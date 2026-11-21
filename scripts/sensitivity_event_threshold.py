@@ -87,7 +87,7 @@ def main() -> None:
 
     print("Building dim_county_customers and silver_outages (all years) ...", flush=True)
     silver.bronze(con, month_filter=None)
-    con.execute(silver.DIM_SQL)
+    silver.build_dim(con)
     for name, _, sql in silver.SILVER_STEPS:
         con.execute(f"CREATE OR REPLACE TABLE {name} AS {sql}")
     for name, _, _ in silver.SILVER_STEPS[:-1]:

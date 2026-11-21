@@ -99,7 +99,7 @@ def norm_county(name: str) -> str:
 def build_eaglei(con) -> None:
     print("Building EAGLE-I Silver and Gold in DuckDB (all years) ...", flush=True)
     silver.bronze(con, month_filter=None)
-    con.execute(silver.DIM_SQL)
+    silver.build_dim(con)
     for name, _, sql in silver.SILVER_STEPS:
         con.execute(f"CREATE OR REPLACE TABLE {name} AS {sql}")
     for name, _, _ in silver.SILVER_STEPS[:-1]:

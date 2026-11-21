@@ -1,9 +1,7 @@
 """Test sql/databricks/03_gold_events.sql in DuckDB.
 
 The Gold queries are read straight from the .sql file, so the test runs the same logic that
-Databricks will run. Two Databricks functions are swapped for their DuckDB equivalents:
-    explode(sequence(...))  -> unnest(generate_series(...))
-    unix_seconds(...)       -> epoch(...)
+Databricks will run, translated to DuckDB by scripts/sql_dialect.py.
 
 Steps:
     1. Synthetic check of the event rules: 1-hour boundary, nationwide feed gap (D3, D10),
@@ -34,10 +32,6 @@ GOLD_TABLES = ["gold_collection_runs", "gold_event_thresholds", "gold_feed_dropo
 
 SHARE_PATTERN = re.compile(r"CAST\(([0-9.]+) AS DOUBLE\) AS event_share")
 
-DIALECT = [
-    ("explode(sequence(", "unnest(generate_series("),
-    ("unix_seconds(", "epoch("),
-]
 
 
 def current_share() -> float:
@@ -59,12 +53,9 @@ def gold_statements(share: float | None = None) -> list[tuple[str, str]]:
     found = pattern.findall(text)
     if [name for name, _ in found] != GOLD_TABLES:
         raise SystemExit(f"Unexpected statements in {GOLD_SQL.name}: {[n for n, _ in found]}")
-    out = []
-    for name, query in found:
-        for old, new in DIALECT:
-            query = query.replace(old, new)
-        out.append((name, query))
-    return out
+    import sql_dialect
+
+    return [(name, sql_dialect.to_duckdb(query)) for name, query in found]
 
 
 def build_gold(con, share: float | None = None, skip: tuple[str, ...] = ()) -> None:
@@ -220,7 +211,7 @@ def real_data(month: str) -> None:
 
     # Denominators from full data, as in the Silver test.
     silver.bronze(con, month_filter=None)
-    con.execute(silver.DIM_SQL)
+    silver.build_dim(con)
 
     # Silver on the sample (or all years), then drop the intermediate steps to save memory.
     silver.bronze(con, month_filter=None if month == "all" else month)

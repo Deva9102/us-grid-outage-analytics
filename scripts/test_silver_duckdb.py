@@ -51,6 +51,44 @@ def bronze(con: duckdb.DuckDBPyConnection, month_filter: str | None) -> None:
         CREATE OR REPLACE VIEW bronze_state_regions AS
         SELECT * FROM read_csv('{REGIONS_CSV.as_posix()}', all_varchar = true)
     """)
+    bronze_sources(con)
+
+
+def bronze_sources(con: duckdb.DuckDBPyConnection) -> None:
+    """Bronze views for the added sources, as in 01_bronze_sources.sql (all text, D14, D27)."""
+    import raw_convert
+
+    raw_convert.ensure_converted(verbose=False)
+    ref = REPO_ROOT / "data" / "reference"
+    noaa = sorted((RAW / "noaa_storm_events").rglob("StormEvents_details-*.csv.gz"))
+    zones = sorted((RAW / "nws_zone_county").rglob("bp*.dbx"))
+    lst = lambda paths: "[" + ", ".join(f"'{p.as_posix()}'" for p in paths) + "]"
+    con.execute(f"""
+        CREATE OR REPLACE VIEW bronze_noaa_storm_events AS
+        SELECT * EXCLUDE (filename), filename AS source_file
+        FROM read_csv({lst(noaa)}, all_varchar = true, union_by_name = true, filename = true)
+    """)
+    con.execute(f"""
+        CREATE OR REPLACE VIEW bronze_nws_zone_county AS
+        SELECT * EXCLUDE (filename), filename AS source_file
+        FROM read_csv({lst(zones)}, delim = '|', header = false, encoding = 'latin-1', filename = true,
+            columns = {{'state': 'VARCHAR', 'zone': 'VARCHAR', 'cwa': 'VARCHAR', 'name': 'VARCHAR',
+                        'state_zone': 'VARCHAR', 'county': 'VARCHAR', 'fips': 'VARCHAR', 'time_zone': 'VARCHAR',
+                        'fe_area': 'VARCHAR', 'lat': 'VARCHAR', 'lon': 'VARCHAR'}})
+    """)
+    for name, pattern in (("bronze_eia861_reliability", "eia861_parquet/*/reliability_*.parquet"),
+                          ("bronze_eia861_sales", "eia861_parquet/*/sales_*.parquet"),
+                          ("bronze_eia861_service_territory", "eia861_parquet/*/service_territory_*.parquet"),
+                          ("bronze_oe417", "oe417_parquet/*/oe417_*.parquet")):
+        con.execute(f"""
+            CREATE OR REPLACE VIEW {name} AS
+            SELECT * EXCLUDE (filename), filename AS source_file
+            FROM read_parquet('{(RAW / pattern).as_posix()}', filename = true)
+        """)
+    for name, file in (("bronze_noaa_state_codes", "noaa_state_codes.csv"),
+                       ("bronze_oe417_event_types", "oe417_event_types.csv"),
+                       ("bronze_state_time_zones", "state_time_zones.csv")):
+        con.execute(f"CREATE OR REPLACE VIEW {name} AS SELECT * FROM read_csv('{(ref / file).as_posix()}', all_varchar = true)")
 
 
 DIM_SQL = """
@@ -82,18 +120,55 @@ compared AS (
     FROM eaglei_counties AS c
     LEFT JOIN totals_2024 AS t ON t.fips_code = c.fips_code
     LEFT JOIN mcc         AS m ON m.fips_code = c.fips_code
+),
+d13 AS (
+    SELECT
+        fips_code,
+        CASE WHEN is_mismatch                      THEN GREATEST(total_customers_2024, mcc_customers)
+             WHEN total_customers_2024 IS NOT NULL THEN total_customers_2024
+             ELSE mcc_customers END AS customers,
+        CASE WHEN is_mismatch                      THEN 'max_mcc_2024'
+             WHEN total_customers_2024 IS NOT NULL THEN 'total_customers_2024'
+             WHEN mcc_customers IS NOT NULL        THEN 'mcc' END AS denominator_source,
+        is_mismatch AS denominator_mismatch
+    FROM compared
+),
+state_totals AS (
+    SELECT r.state_abbr, SUM(d.customers) AS d13_customers
+    FROM d13 AS d INNER JOIN bronze_state_regions AS r ON r.state_fips = LEFT(d.fips_code, 2)
+    GROUP BY r.state_abbr
+),
+factors AS (
+    SELECT s.state_abbr,
+           CASE WHEN s.d13_customers > 1.25 * e.customers THEN s.d13_customers / e.customers ELSE 1.0 END AS calibration_factor
+    FROM state_totals AS s
+    LEFT JOIN silver_eia_state_customers AS e ON e.state_abbr = s.state_abbr AND e.data_year = 2024
 )
 SELECT
-    fips_code,
-    CASE WHEN is_mismatch                      THEN GREATEST(total_customers_2024, mcc_customers)
-         WHEN total_customers_2024 IS NOT NULL THEN total_customers_2024
-         ELSE mcc_customers END AS customers,
-    CASE WHEN is_mismatch                      THEN 'max_mcc_2024'
-         WHEN total_customers_2024 IS NOT NULL THEN 'total_customers_2024'
-         WHEN mcc_customers IS NOT NULL        THEN 'mcc' END AS denominator_source,
-    is_mismatch AS denominator_mismatch
-FROM compared
+    d.fips_code,
+    CAST(ROUND(d.customers / COALESCE(f.calibration_factor, 1.0)) AS BIGINT) AS customers,
+    d.denominator_source,
+    d.denominator_mismatch,
+    CAST(COALESCE(f.calibration_factor, 1.0) AS DOUBLE) AS calibration_factor
+FROM d13 AS d
+LEFT JOIN bronze_state_regions AS r ON r.state_fips = LEFT(d.fips_code, 2)
+LEFT JOIN factors AS f ON f.state_abbr = r.state_abbr
 """
+
+# D13 only (no D21 calibration): used to measure the calibration's effect.
+DIM_UNCALIBRATED_SQL = DIM_SQL.replace(
+    "CASE WHEN s.d13_customers > 1.25 * e.customers THEN s.d13_customers / e.customers ELSE 1.0 END",
+    "1.0",
+)
+
+
+def build_dim(con: duckdb.DuckDBPyConnection, calibrated: bool = True) -> None:
+    """dim_county_customers as in 02_silver.sql. Needs silver_eia_state_customers (D21)."""
+    import sql_dialect
+
+    stmts = dict(sql_dialect.table_statements(REPO_ROOT / "sql" / "databricks" / "02_silver_sources.sql"))
+    con.execute(f"CREATE OR REPLACE TABLE silver_eia_state_customers AS {stmts['silver_eia_state_customers']}")
+    con.execute(DIM_SQL if calibrated else DIM_UNCALIBRATED_SQL)
 
 SILVER_STEPS = [
     ("unioned", "D2 rename sum -> customers_out, union years", """
@@ -254,7 +329,7 @@ def main() -> None:
 
     # 1. Denominator table from full data.
     bronze(con, month_filter=None)
-    con.execute(DIM_SQL)
+    build_dim(con)
     print("dim_county_customers (full data):")
     show(con, """
         SELECT COALESCE(denominator_source, '(none)') AS denominator_source, COUNT(*) AS counties,
