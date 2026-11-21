@@ -85,8 +85,8 @@ EXPECTED_COUNTS = {
     "silver_outages": 79_598_850,
     "gold_collection_runs": 105_216,
     "gold_event_thresholds": 3_063,
-    "gold_feed_dropouts": 19_195,
-    "gold_outage_events": 446_331,
+    "gold_feed_dropouts": 19_190,
+    "gold_outage_events": 446_262,
     "gold_state_coverage": 53,
 }
 EXPECTED_TOP10 = [
@@ -97,18 +97,19 @@ EXPECTED_TOP10 = [
     ("72025-00354", 51_591_410),
     ("72013-00311", 39_747_345),
     ("12103-00430", 39_189_773),
-    ("45045-00441", 27_062_267),
+    ("45045-00330", 33_811_120),
+    ("45083-00354", 25_642_003),
     ("37021-00329", 23_641_092),
-    ("45083-00422", 22_542_386),
 ]
 EXPECTED_DETAIL = {
     "feed gaps per year (D3)": [("2022", "3"), ("2023", "16"), ("2024", "41")],
-    "events per year": [("2022", "149706"), ("2023", "144774"), ("2024", "151851")],
-    "dropouts per year (D19)": [("2022", "6796"), ("2023", "5784"), ("2024", "6615")],
-    "exceeds_customers rows per year (D4, D21)": [("2022", "1878"), ("2023", "369"), ("2024", "9940")],
+    "events per year": [("2022", "149695"), ("2023", "144748"), ("2024", "151819")],
+    "dropouts per year (D19)": [("2022", "6793"), ("2023", "5782"), ("2024", "6615")],
+    "exceeds_customers rows per year (D4, D21, D35)": [("2022", "1818"), ("2023", "365"), ("2024", "8421")],
     "denominator sources (D13)": [("NULL", "2"), ("max_mcc_2024", "372"), ("mcc", "2"),
                                   ("total_customers_2024", "2687")],
     "calibrated states and counties (D21)": [("5", "246")],
+    "counties held at their peak (D35)": [("12",)],
     "storm events unplaced by reason (D30)": [("territory_not_tracked", "180"), ("water", "8544"),
                                               ("zone_not_in_file", "32")],
     "reliability rows by standard (D32)": [("IEEE 1366", "2204"), ("other", "704")],
@@ -123,7 +124,7 @@ DETAIL_SQL = {
         "SELECT CAST(event_year AS STRING), CAST(COUNT(*) AS STRING) FROM gold_outage_events GROUP BY 1 ORDER BY 1",
     "dropouts per year (D19)":
         "SELECT CAST(dropout_year AS STRING), CAST(COUNT(*) AS STRING) FROM gold_feed_dropouts GROUP BY 1 ORDER BY 1",
-    "exceeds_customers rows per year (D4, D21)":
+    "exceeds_customers rows per year (D4, D21, D35)":
         "SELECT CAST(year AS STRING), CAST(COUNT_IF(exceeds_customers) AS STRING) "
         "FROM silver_outages GROUP BY 1 ORDER BY 1",
     "denominator sources (D13)":
@@ -131,7 +132,9 @@ DETAIL_SQL = {
         "FROM dim_county_customers GROUP BY 1 ORDER BY 1",
     "calibrated states and counties (D21)":
         "SELECT CAST(COUNT(DISTINCT LEFT(fips_code, 2)) AS STRING), CAST(COUNT(*) AS STRING) "
-        "FROM dim_county_customers WHERE calibration_factor > 1",
+        "FROM dim_county_customers WHERE state_calibration_factor > 1",
+    "counties held at their peak (D35)":
+        "SELECT CAST(COUNT_IF(peak_floor_applied) AS STRING) FROM dim_county_customers",
     "storm events unplaced by reason (D30)":
         "SELECT reason, CAST(COUNT(*) AS STRING) FROM silver_storm_events_unplaced GROUP BY 1 ORDER BY 1",
     "reliability rows by standard (D32)":
