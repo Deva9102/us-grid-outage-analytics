@@ -31,6 +31,15 @@ Row counts come from DuckDB runs against the raw EAGLE-I files
 | D23 | EIA-861 rules: Parts A+C+D, IEEE 1366 rankings, no county-to-utility attribution | Silver / Gold | 2026-11-21 |
 | D24 | OE-417 times as local time of the first state; event type mapping file | Silver | 2026-11-21 |
 | D25 | OE-417 covers 2022-2023 unless 2024 is added by hand; archive provenance | Bronze | 2026-11-21 |
+| D26 | Added-source SQL files numbered by layer; run order | All | 2026-11-21 |
+| D27 | Excel sources reach Bronze as raw-row Parquet, cells as text | Bronze | 2026-11-21 |
+| D28 | NOAA state code crosswalk (PR 99, VI 96, water areas) | Silver | 2026-11-21 |
+| D29 | NOAA times to UTC from the CZ_TIMEZONE offset | Silver | 2026-11-21 |
+| D30 | NOAA events placed by county FIPS or the zone file in effect; unplaced counted | Silver | 2026-11-21 |
+| D31 | NOAA damage parsed to dollars; event_weight for zone events | Silver | 2026-11-21 |
+| D32 | EIA-861 Silver: data rows, reporting standard, customers, size bands | Silver | 2026-11-21 |
+| D33 | OE-417 Silver parsing: rows, dates, restoration, area tokens | Silver | 2026-11-21 |
+| D34 | OE-417 county names matched to FIPS once, in Silver | Silver | 2026-11-21 |
 
 ---
 
@@ -834,6 +843,33 @@ Knock-on effects, measured in DuckDB, applied when Silver and Gold are rebuilt:
   event counts in MA, SC, HI, MO and SD will change. None of the D18 test counties (Pinellas FL,
   Wayne MI, Los Angeles CA, Harris TX) is in a calibrated state, so D18's margins are unchanged.
 
+**Implemented** (2026-11-21) in `02_silver.sql` (`dim_county_customers.calibration_factor`) and
+measured with the full rebuild (`scripts/test_sources_duckdb.py`):
+
+| State | Events before | Events after | Thresholds changed | Median threshold | Overcount rows | Customer-hours (M) |
+|---|---|---|---|---|---|---|
+| MA | 1,773 | 3,020 | 12 | 1,176 -> 584 | 0 -> 37 | 22.47 -> 26.44 |
+| SC | 6,805 | 8,806 | 26 | 324 -> 169 | 0 -> 1,502 | 154.24 -> 145.68 |
+| HI | 1,372 | 1,476 | 3 | 442 -> 336 | 0 -> 1 | 9.18 -> 9.42 |
+| MO | 11,055 | 11,634 | 19 | 185 -> 143 | 0 -> 4 | 35.68 -> 36.20 |
+| SD | 1,751 | 1,789 | 2 | 268 -> 210 | 15 -> 39 | 4.16 -> 4.20 |
+
+(Overcount rows count all three years in that state. "Thresholds changed" counts counties whose D18
+threshold is above 100, about 40,000+ customers.)
+
+- National events: 442,362 to 446,331 (148,425 / 143,479 / 150,458 to 149,706 / 144,774 / 151,851).
+  Dropouts: 19,050 to 19,195.
+- **The top 10 is not unchanged.** The same 10 storms remain, and Beryl, Fiona, Ian and Milton are
+  identical. But both South Carolina Helene events lose customer-hours, because the lower
+  denominators cap their readings (D4): Greenville 33.81 M to 27.06 M, Spartanburg 25.63 M to
+  22.54 M. Spartanburg drops from #9 to #10 behind Buncombe NC.
+- The cause is that the uniform state factor pushes 9 of the 246 calibrated counties below the
+  highest outage ever reported there (SC 5, HI 1, MA 1, MO 1, SD 1; SD already had 1 before).
+  Greenville goes from 301,949 to 157,234 against a reported peak of 270,050; Spartanburg from
+  256,231 to 133,428 against 183,816; Anderson from 158,516 to 82,544 against 106,940. South
+  Carolina's inflation sits in other counties, so one factor under-corrects some counties and
+  over-corrects these. See Q4.
+
 ## D22. Coverage table and footnotes
 
 **What:** Gold gets a per-state coverage table: counties with EAGLE-I data, total counties (from the
@@ -869,6 +905,14 @@ are reported by island (St. Croix, St. John, St. Thomas).
 
 Caveat: coverage uses the D21 denominators, which are capped at EIA only above a ratio of 1.25. A
 state between 1.0 and 1.25 shows 100% even if a few counties are missing.
+
+**Implemented** (2026-11-21) as `gold_state_coverage` in `03_gold_coverage.sql`: total counties from
+the latest NWS zone file in effect by 2024-12-31 (`bp05mr24`), counties with EAGLE-I data and their
+calibrated customers from `dim_county_customers`, EIA 2024 customers from
+`silver_eia_state_customers`, `customer_coverage` capped at 1, `ranking_eligible` (>= 70%), the
+state's `calibration_factor`, and a `coverage_note` for PR (region-level data) and VI (by island).
+Result: 53 rows, 0 states below 70%, lowest AK 76.5%, NE 86.4%, DC 89.2%. Hawaii shows 5 EAGLE-I
+counties against 4 in the NWS file because Kalawao County (15005) has no NWS forecast zone.
 
 ## D23. EIA-861 rules
 
@@ -981,6 +1025,196 @@ file size is not a whole number of sectors; the file still reads completely, wit
 **Rows affected:** none removed. OE-417 has 738 rows instead of the roughly 1,100 a full three
 years would hold.
 
+## D26. SQL files for the added sources and run order
+
+**What:** The added sources get their own files, numbered by layer as the project rules require:
+`01_bronze_sources.sql`, `02_silver_sources.sql` and `03_gold_coverage.sql`. They run in this
+order (`scripts/run_databricks.py`, `SQL_FILES`):
+
+1. `01_bronze.sql`
+2. `01_bronze_sources.sql`
+3. `02_silver_sources.sql`
+4. `02_silver.sql`
+5. `03_gold_events.sql`
+6. `03_gold_coverage.sql`
+
+**Why:** The request was for the next file numbers (04, 05), but the project rules number SQL by layer
+(01 Bronze, 02 Silver, 03 Gold, 04 analysis), and 04 is reserved for analysis. The order also has a
+dependency: the D21 calibration in `02_silver.sql` reads `silver_eia_state_customers`, so the
+source Silver file must run before it.
+
+**Rows affected:** none.
+
+## D27. Excel sources reach Bronze as raw-row Parquet
+
+**What:** Databricks cannot read `.xlsx` or legacy `.xls`, so `scripts/raw_convert.py` converts the
+EIA-861 workbooks and OE-417 summaries to Parquet locally. Every row of every sheet is kept in
+order, with `source_name`, `sheet_name`, `row_number` and positional text columns `col_01 ..
+col_NN` (30 for Reliability and Sales, 10 for Service Territory, 15 for OE-417). Headers, footers and
+blank rows stay in; Silver decides what is data. The only transformation is cell type to text:
+- an empty cell becomes NULL, and text is unchanged;
+- whole numbers lose `.0`, and other numbers keep their round-trip text;
+- date cells become `YYYY-MM-DD`;
+- time-only cells become `HH:MM:SS` (OE-417 stores times as Excel times dated 1899);
+- date-times become `YYYY-MM-DD HH:MM:SS`.
+
+**Why:** This keeps Bronze as-is (D14) while making the files readable by `read_files`. Positional
+columns avoid guessing header rows in Bronze, since EIA sheets have 1-3 header rows and the OE-417
+header row changed name between years.
+
+**Rows affected:** 3,042 Reliability, 8,791 Sales, 35,616 Service Territory and 742 OE-417 sheet
+rows, none changed.
+
+## D28. NOAA state code crosswalk
+
+**What:** `data/reference/noaa_state_codes.csv` (built by `scripts/noaa_state_codes.py`, committed) maps
+NOAA `STATE_FIPS` to Census state FIPS and an area type:
+- **state:** the 50 states and DC, same codes as Census.
+- **territory:** Puerto Rico is NOAA 99 (Census 72), and the US Virgin Islands are NOAA 96 (Census 78).
+- **territory_not_tracked:** American Samoa (97) and Guam (98), which have no EAGLE-I data.
+- **water:** 14 marine and Great Lakes areas (codes 81-95).
+
+**Why:** A plain FIPS join would drop every Puerto Rico and Virgin Islands event, because NOAA does
+not use Census codes for them. Water areas need to be recognized to keep them out of county tables.
+
+**Rows affected:** 215,282 events, all mapped (0 unknown codes). 1,422 Puerto Rico and Virgin
+Islands events are recovered: 1,061 county events and 361 zone events.
+
+## D29. NOAA times to UTC
+
+**What:** Begin and end times are built from the numeric parts (`BEGIN_YEARMONTH`, `BEGIN_DAY`,
+`BEGIN_TIME`, and the same for END), which are local standard time. UTC = local - offset, where the
+offset is the signed number at the end of `CZ_TIMEZONE` (`CST-6` = -6, `GST10` = +10). Daylight codes
+(`EDT-4`, `CDT-5`, `PDT-7`) carry their own offset and use the same rule.
+
+**Why:** EAGLE-I is UTC (D1), so storm-to-outage matching needs UTC. The numeric parts agree with
+`BEGIN_DATE_TIME` on every row (0 mismatches, `docs/data_profile_sources.md`) and avoid parsing the
+two-digit-year text format.
+
+**Rows affected:** 215,282 events; 0 with a NULL `begin_utc`, 0 ending before they begin.
+
+## D30. Placing NOAA events in counties
+
+**What:**
+- **County events (`CZ_TYPE = 'C'`):** county FIPS = Census state FIPS (D28) + 3-digit `CZ_FIPS`.
+- **Zone events (`CZ_TYPE = 'Z'`):** expanded to every county the zone covers, using the NWS
+  zone-county file in effect on the event's local begin date (`silver_nws_zone_versions`: each
+  version is valid from its date until the next).
+- **Not placed:** events in water areas, in territories without EAGLE-I data, or in zones absent
+  from the file in effect go to `silver_storm_events_unplaced` with a reason, so they are counted
+  rather than lost.
+
+**Why:** About 46% of events are reported by zone (`docs/data_profile_sources.md`). Zones are redrawn twice a year, so the
+file in effect on the event date is the right mapping (the profile showed about 1,000 fewer zone
+events resolve with the latest file only). Water events can never match an EAGLE-I county.
+
+**Rows affected:**
+- 215,282 events in total; 206,558 are on land in a state or tracked territory.
+- 206,526 events are placed, giving **232,414** event-county rows (115,080 county events, plus 91,446
+  zone events expanding to 117,334 rows, 1.28 counties each, up to 10).
+- **8,756 events are unplaced:** 8,544 in water, 180 in Guam or American Samoa, and 32 zones not in
+  the file in effect (Florida 17, Illinois 14, Louisiana 1).
+- 2,931 county-event rows and 5,679 zone-county rows fall in counties with no EAGLE-I data (for
+  example Nebraska, D22). They stay in Silver, and the Gold match will simply find no outage there.
+- Alaska county events use NOAA's own area codes (for example 02101 "Anchorage Muni to Bird Creek"),
+  which are not Census county FIPS; Alaska has 9 EAGLE-I counties anyway (D22).
+
+## D31. NOAA damage and event-level measures
+
+**What:**
+- `DAMAGE_PROPERTY` and `DAMAGE_CROPS` text (`10.00K`, `1.5M`, `2B`) becomes US dollars (K = 1e3,
+  M = 1e6, B = 1e9). An empty value stays NULL, not 0: NOAA leaves it empty when no estimate was made.
+- Deaths, injuries, magnitude and tornado scale are kept as reported.
+- These are event-level values, so they repeat on each county row of a zone event.
+  `county_count` and `event_weight = 1 / county_count` let a sum over county rows return the event
+  total (`SUM(damage_property_usd * event_weight)`); summing raw values over county rows would count a
+  zone event several times.
+
+**Why:** Analysis needs numbers, not text, and must not inflate damage by expanding zones to
+counties. NULL versus 0 keeps "no estimate" apart from "no damage".
+
+**Rows affected:** 166,015 events with a property damage value and 49,267 with none (NULL);
+every non-empty value parses. Totals: $53.1 bn property and $4.5 bn crops, 2022-2024.
+
+## D32. EIA-861 Silver tables
+
+**What:**
+- Data rows are the rows whose first cell is a 4-digit year, in the sheets `Reliability_States`,
+  `Reliability_Territories`, `States` and `Territories`. Other sheets (`State Totals`, `Decoupled`),
+  headers and footers are skipped.
+- `.` and empty mean "not reported" and become NULL.
+- `reporting_standard` is `IEEE 1366` when any IEEE SAIDI or SAIFI value is present, otherwise
+  `other` when any other-standard value is present. `saidi_with_med`, `saidi_without_med`,
+  `saifi_with_med` and `saifi_without_med` come from that standard only (D23).
+- `customers` is the Sales total for Parts A + C + D, summed over balancing authorities, for the same
+  utility, state and year.
+- **Size bands** by `customers`: `small` < 10,000; `medium` 10,000-99,999; `large` 100,000-499,999;
+  `very_large` >= 500,000; `unknown` when the utility has no Sales row. The 500,000 cut puts every
+  Eversource and National Grid operating company except Nantucket Electric (14,544, medium) into a
+  peer group with other large utilities.
+- `silver_eia_state_customers`: Parts A + C + D per state and year, used by D21 and D22.
+
+**Why:** These rules follow the source layout and D23. The size bands give analysis question 5 a
+like-for-like peer group.
+
+**Rows affected:**
+- `silver_utility_reliability`: 2,908 rows (964 / 970 / 974), unique per utility, state and year.
+  2,204 are IEEE 1366 and 704 other-standard; 7 have no Sales customers.
+- Sales data rows: 8,502, of which 5,908 are Parts A, C or D (2,594 Part B rows excluded).
+- 2024 size bands: 138 small, 641 medium, 117 large, 73 very large (62 of them IEEE reporters),
+  5 unknown.
+- `silver_eia_state_customers`: 168 rows; the 2024 total is 165,391,292.
+
+## D33. OE-417 Silver parsing
+
+**What:** `silver_oe417_rows` holds one row per incident, `silver_oe417_locations` one row per state or
+county named, and `silver_oe417` one row per incident with UTC times (D24) and the location lists.
+- **Rows:** in each file, the header row is the one whose second cell reads `Date Event Began`.
+  Non-blank rows after it are incidents. `incident_id` = report year + 4-digit row order, for
+  example `2022-0001`.
+- **Dates and times:** dates are `M/d/yyyy` text, ISO dates, or Excel day numbers stored as text
+  (one restoration date reads `44641`, which is 2022-03-21). Times are `HH:MM:SS`. A missing time
+  keeps the date at midnight, with `begin_time_reported = false`.
+- **Restoration:** `restoration_status` is `reported`, `unknown` (including `- Unknown` and the
+  `Unkonwn` typo), `ongoing`, `missing` or `unparsed`.
+- **Customers and demand:** `customers_affected` and `demand_loss_mw` are numbers; `Unknown` and
+  other text become NULL.
+- **Area text:** footnote markers such as `[13]` and the ', City of' suffix of independent cities
+  are removed. The text is then split on `:`, `;` and `,` into ordered tokens. A token that is a state
+  name opens that state, and the tokens after it are its counties.
+
+**Why:** These cover every format variant found in the two files, so no incident is dropped or
+mis-parsed.
+
+**Rows affected:**
+- 742 sheet rows -> 738 incidents (390 in 2022, 348 in 2023). The 4 dropped rows are titles and
+  headers; there are no blank rows.
+- 32 incidents (all 2023) have no begin date; 75 have unknown customers.
+- Restoration: 635 reported, 103 unknown.
+- 939 state mentions in 700 incidents. 38 incidents name no recognizable state and get no time
+  conversion.
+- `begin_utc` is set for 668 incidents; the offsets applied are 4 to 8 hours.
+
+## D34. Matching OE-417 county names to FIPS
+
+**What:** OE-417 names counties as text, so it is the one place where names are matched. Both
+sides, the OE-417 tokens and EAGLE-I county names from Bronze, are normalized the same way:
+- lowercase; `&` becomes `and`; periods and apostrophes are removed; hyphens become spaces;
+- `St`/`Ste` become `Saint`/`Sainte`;
+- the suffixes County, Parish, Borough, Census Area, City and Borough, Municipality and Municipio
+  are removed.
+
+They then join on state + normalized name. A name that fits two EAGLE-I counties (for example
+Baltimore County and Baltimore city, both named Baltimore in EAGLE-I) keeps both FIPS and is
+flagged `ambiguous`.
+
+**Why:** OE-417 has no FIPS codes. The match produces FIPS once, in Silver, so everything
+downstream joins on FIPS, as the project rules require.
+
+**Rows affected:** 1,028 county names listed. 1,026 match (1,021 exact rows, 10 ambiguous rows for
+5 names), and 2 do not: Kearney and Wayne in Nebraska, counties without EAGLE-I data. 507 incidents
+end up with at least one county.
+
 ---
 
 ## Open questions
@@ -997,3 +1231,15 @@ To break down before the storm match is built:
   zone records can begin later than the first outages.
 - Event type labels: hurricane impacts are often recorded as Tropical Storm, Storm Surge/Tide,
   High Wind or Flash Flood, in zones rather than counties.
+
+**Q4. D21 uniform scaling pushes some counties below their own reported peaks.** 9 of 246 calibrated
+counties end below the largest outage EAGLE-I ever reported there; South Carolina's three largest
+Helene counties (Greenville, Spartanburg, Anderson) are among them, and SC gains 1,502 overcount
+flags. Options:
+- A. Keep D21 as is and footnote SC.
+- B. Floor each calibrated county at its highest reported outage, and spread the remaining
+  reduction over the other counties of the state.
+- C. Split the EIA state total across counties using EIA-861 Service Territory (utilities per county)
+  instead of EAGLE-I's shares.
+
+B is the smallest change that keeps every real peak possible.
