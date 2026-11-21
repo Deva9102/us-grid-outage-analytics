@@ -48,7 +48,9 @@ from dotenv import load_dotenv
 REPO_ROOT = Path(__file__).resolve().parent.parent
 RAW = REPO_ROOT / "data" / "raw"
 SQL_DIR = REPO_ROOT / "sql" / "databricks"
-SQL_FILES = ["01_bronze.sql", "02_silver.sql", "03_gold_events.sql"]
+# Run order (D26): files are numbered by layer; within a layer, sources before dependants.
+SQL_FILES = ["01_bronze.sql", "01_bronze_sources.sql", "02_silver_sources.sql", "02_silver.sql",
+             "03_gold_events.sql", "03_gold_coverage.sql"]
 CATALOG, SCHEMA = "workspace", "outages"
 VOLUME = "/Volumes/workspace/outages/raw"
 YEARS = (2022, 2023, 2024)
@@ -60,12 +62,32 @@ EXPECTED_COUNTS = {
     "bronze_eaglei_2024": 27_701_334,
     "bronze_eaglei_mcc": 3_234,
     "bronze_state_regions": 53,
+    "bronze_noaa_storm_events": 215_282,
+    "bronze_nws_zone_county": 28_391,
+    "bronze_eia861_reliability": 3_042,
+    "bronze_eia861_sales": 8_791,
+    "bronze_eia861_service_territory": 35_616,
+    "bronze_oe417": 742,
+    "bronze_noaa_state_codes": 69,
+    "bronze_oe417_event_types": 43,
+    "bronze_state_time_zones": 53,
+    "silver_eia_state_customers": 168,
+    "silver_utility_reliability": 2_908,
+    "silver_nws_zone_versions": 6,
+    "silver_nws_zone_county": 28_209,
+    "silver_storm_event_details": 215_282,
+    "silver_storm_events": 232_414,
+    "silver_storm_events_unplaced": 8_756,
+    "silver_oe417_rows": 738,
+    "silver_oe417_locations": 1_972,
+    "silver_oe417": 738,
     "dim_county_customers": 3_063,
     "silver_outages": 79_598_850,
     "gold_collection_runs": 105_216,
     "gold_event_thresholds": 3_063,
-    "gold_feed_dropouts": 19_050,
-    "gold_outage_events": 442_362,
+    "gold_feed_dropouts": 19_195,
+    "gold_outage_events": 446_331,
+    "gold_state_coverage": 53,
 }
 EXPECTED_TOP10 = [
     ("48201-00250", 135_547_967),
@@ -75,17 +97,23 @@ EXPECTED_TOP10 = [
     ("72025-00354", 51_591_410),
     ("72013-00311", 39_747_345),
     ("12103-00430", 39_189_773),
-    ("45045-00314", 33_810_433),
-    ("45083-00264", 25_628_449),
+    ("45045-00441", 27_062_267),
     ("37021-00329", 23_641_092),
+    ("45083-00422", 22_542_386),
 ]
 EXPECTED_DETAIL = {
     "feed gaps per year (D3)": [("2022", "3"), ("2023", "16"), ("2024", "41")],
-    "events per year": [("2022", "148425"), ("2023", "143479"), ("2024", "150458")],
-    "dropouts per year (D19)": [("2022", "6746"), ("2023", "5736"), ("2024", "6568")],
-    "exceeds_customers rows per year (D4)": [("2022", "1820"), ("2023", "365"), ("2024", "8434")],
+    "events per year": [("2022", "149706"), ("2023", "144774"), ("2024", "151851")],
+    "dropouts per year (D19)": [("2022", "6796"), ("2023", "5784"), ("2024", "6615")],
+    "exceeds_customers rows per year (D4, D21)": [("2022", "1878"), ("2023", "369"), ("2024", "9940")],
     "denominator sources (D13)": [("NULL", "2"), ("max_mcc_2024", "372"), ("mcc", "2"),
                                   ("total_customers_2024", "2687")],
+    "calibrated states and counties (D21)": [("5", "246")],
+    "storm events unplaced by reason (D30)": [("territory_not_tracked", "180"), ("water", "8544"),
+                                              ("zone_not_in_file", "32")],
+    "reliability rows by standard (D32)": [("IEEE 1366", "2204"), ("other", "704")],
+    "OE-417 incidents per year (D33)": [("2022", "390"), ("2023", "348")],
+    "states below 70% coverage (D22)": [("0",)],
 }
 DETAIL_SQL = {
     "feed gaps per year (D3)":
@@ -95,12 +123,23 @@ DETAIL_SQL = {
         "SELECT CAST(event_year AS STRING), CAST(COUNT(*) AS STRING) FROM gold_outage_events GROUP BY 1 ORDER BY 1",
     "dropouts per year (D19)":
         "SELECT CAST(dropout_year AS STRING), CAST(COUNT(*) AS STRING) FROM gold_feed_dropouts GROUP BY 1 ORDER BY 1",
-    "exceeds_customers rows per year (D4)":
+    "exceeds_customers rows per year (D4, D21)":
         "SELECT CAST(year AS STRING), CAST(COUNT_IF(exceeds_customers) AS STRING) "
         "FROM silver_outages GROUP BY 1 ORDER BY 1",
     "denominator sources (D13)":
         "SELECT COALESCE(denominator_source, 'NULL'), CAST(COUNT(*) AS STRING) "
         "FROM dim_county_customers GROUP BY 1 ORDER BY 1",
+    "calibrated states and counties (D21)":
+        "SELECT CAST(COUNT(DISTINCT LEFT(fips_code, 2)) AS STRING), CAST(COUNT(*) AS STRING) "
+        "FROM dim_county_customers WHERE calibration_factor > 1",
+    "storm events unplaced by reason (D30)":
+        "SELECT reason, CAST(COUNT(*) AS STRING) FROM silver_storm_events_unplaced GROUP BY 1 ORDER BY 1",
+    "reliability rows by standard (D32)":
+        "SELECT reporting_standard, CAST(COUNT(*) AS STRING) FROM silver_utility_reliability GROUP BY 1 ORDER BY 1",
+    "OE-417 incidents per year (D33)":
+        "SELECT CAST(report_year AS STRING), CAST(COUNT(*) AS STRING) FROM silver_oe417 GROUP BY 1 ORDER BY 1",
+    "states below 70% coverage (D22)":
+        "SELECT CAST(COUNT_IF(NOT ranking_eligible) AS STRING) FROM gold_state_coverage",
 }
 
 FORBIDDEN = re.compile(r"\b(DROP|ALTER|TRUNCATE|DELETE|GRANT|REVOKE)\b", re.I)
@@ -266,6 +305,11 @@ def step_convert() -> None:
             raise Stop(f"{out.name}: {rows:,} rows, expected {expected:,}")
         c, p = csv.stat().st_size, out.stat().st_size
         print(f"{year:<6} {human(c):>10} {human(p):>10} {p / c:>6.1%} {rows:>14,}")
+    print("Excel sources to raw-row Parquet (D27):")
+    import raw_convert
+
+    for out in raw_convert.ensure_converted():
+        print(f"  {out.relative_to(REPO_ROOT)}")
 
 
 def upload_list() -> list[tuple[Path, str]]:
@@ -273,7 +317,16 @@ def upload_list() -> list[tuple[Path, str]]:
               f"{VOLUME}/eaglei_parquet/{y}/eaglei_outages_{y}.parquet") for y in YEARS]
     for name in ("MCC.csv", "coverage_history.csv", "DQI.csv"):
         items.append((RAW / "eaglei" / "metadata" / name, f"{VOLUME}/eaglei/metadata/{name}"))
-    items.append((REPO_ROOT / "data" / "reference" / "state_regions.csv", f"{VOLUME}/reference/state_regions.csv"))
+    ref = REPO_ROOT / "data" / "reference"
+    for name in ("state_regions.csv", "noaa_state_codes.csv", "oe417_event_types.csv", "state_time_zones.csv"):
+        items.append((ref / name, f"{VOLUME}/reference/{name}"))
+    for p in sorted((RAW / "noaa_storm_events").rglob("StormEvents_details-*.csv.gz")):
+        items.append((p, f"{VOLUME}/noaa_storm_events/{p.parent.name}/{p.name}"))
+    for p in sorted((RAW / "nws_zone_county").rglob("bp*.dbx")):
+        items.append((p, f"{VOLUME}/nws_zone_county/{p.parent.name}/{p.name}"))
+    for folder in ("eia861_parquet", "oe417_parquet"):
+        for p in sorted((RAW / folder).rglob("*.parquet")):
+            items.append((p, f"{VOLUME}/{folder}/{p.parent.name}/{p.name}"))
     return items
 
 
