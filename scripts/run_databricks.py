@@ -7,7 +7,14 @@ Steps (run all, or pick with --steps):
     upload   Parquet files, EAGLE-I metadata files and data/reference/state_regions.csv to
              /Volumes/workspace/outages/raw/ with the Databricks SDK, keeping the folder structure
     sql      sql/databricks/01_bronze.sql, 02_silver.sql, 03_gold_events.sql, statement by statement
+             with the quality gate of each layer (sql/databricks/90_quality_checks.sql) after
+             Bronze, Silver and Gold; a failed check stops the run (D48)
     verify   row counts for every table in workspace.outages, compared with the DuckDB results
+    quality  all quality checks on demand, results appended to gold_quality_results
+
+Configuration (catalog, schema, years, every rule threshold) comes from config/pipeline.yml and is
+substituted into the SQL before it is sent (D47). Each step is logged with its start time,
+duration and row count to logs/pipeline_<timestamp>.log, and a summary table is printed (D49).
 
 Credentials come from .env (DATABRICKS_SERVER_HOSTNAME, DATABRICKS_HTTP_PATH, DATABRICKS_TOKEN).
 The token is never printed.
@@ -32,6 +39,7 @@ import os
 import re
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import duckdb
@@ -45,6 +53,9 @@ from databricks.sdk.service.sql import (
 )
 from dotenv import load_dotenv
 
+import pipeline_config
+from pipeline_log import RunLog
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 RAW = REPO_ROOT / "data" / "raw"
 SQL_DIR = REPO_ROOT / "sql" / "databricks"
@@ -52,56 +63,16 @@ SQL_DIR = REPO_ROOT / "sql" / "databricks"
 SQL_FILES = ["01_bronze.sql", "01_bronze_sources.sql", "02_silver_sources.sql", "02_silver.sql",
              "03_gold_events.sql", "03_gold_coverage.sql", "03_gold_storm_match.sql", "03_gold_reliability.sql",
              "03_gold_oe417_check.sql"]
-CATALOG, SCHEMA = "workspace", "outages"
-VOLUME = "/Volumes/workspace/outages/raw"
-YEARS = (2022, 2023, 2024)
+# The quality gate of a layer runs after its last file (D48).
+LAYER_OF_PREFIX = {"01": "bronze", "02": "silver", "03": "gold"}
+CFG = pipeline_config.load()
+CATALOG, SCHEMA = CFG["project"]["catalog"], CFG["project"]["schema"]
+VOLUME = CFG["project"]["volume_path"]
+YEARS = tuple(CFG["years"]["list"])
 
-# Expected values from the DuckDB tests (docs/decisions.md).
-EXPECTED_COUNTS = {
-    "bronze_eaglei_2022": 25_796_465,
-    "bronze_eaglei_2023": 26_101_051,
-    "bronze_eaglei_2024": 27_701_334,
-    "bronze_eaglei_mcc": 3_234,
-    "bronze_state_regions": 53,
-    "bronze_noaa_storm_events": 215_282,
-    "bronze_nws_zone_county": 28_391,
-    "bronze_eia861_reliability": 3_042,
-    "bronze_eia861_sales": 8_791,
-    "bronze_eia861_service_territory": 35_616,
-    "bronze_oe417": 742,
-    "bronze_noaa_state_codes": 69,
-    "bronze_oe417_event_types": 43,
-    "bronze_state_time_zones": 53,
-    "silver_eia_state_customers": 168,
-    "silver_utility_reliability": 2_908,
-    "silver_nws_zone_versions": 6,
-    "silver_nws_zone_county": 28_209,
-    "silver_storm_event_details": 215_282,
-    "silver_storm_events": 232_414,
-    "silver_storm_events_unplaced": 8_756,
-    "silver_oe417_rows": 738,
-    "silver_oe417_locations": 1_972,
-    "silver_oe417": 738,
-    "dim_county_customers": 3_063,
-    "silver_outages": 79_598_850,
-    "gold_collection_runs": 105_216,
-    "gold_event_thresholds": 3_063,
-    "gold_feed_dropouts": 19_190,
-    "gold_outage_events": 446_261,
-    "gold_state_coverage": 53,
-    "bronze_storm_event_severity": 54,
-    "gold_event_storm_match": 446_261,
-    "gold_unit_reliability": 9_189,
-    "gold_county_reliability": 9_159,
-    "gold_territory_unit_reliability": 30,
-    "gold_county_ranking_footnotes": 135,
-    "bronze_ranking_exclusions": 0,
-    "gold_state_reliability": 153,
-    "gold_territory_reliability": 6,
-    "gold_utility_reliability": 2_204,
-    "gold_utility_reliability_other": 704,
-    "gold_oe417_check": 738,
-}
+# Expected row counts of the verified run live in config/pipeline.yml (quality.expected_rows, D47).
+EXPECTED_COUNTS = dict(CFG["quality"]["expected_rows"])
+# Regression fixtures from the DuckDB tests (docs/decisions.md): the top 10 and detail checks.
 EXPECTED_TOP10 = [
     ("48201-00250", 135_547_967),
     ("72097-00360", 69_989_855),
@@ -328,8 +299,9 @@ def step_check(w: WorkspaceClient, warehouse_id: str) -> None:
         )
 
 
-def step_convert() -> None:
+def step_convert() -> int:
     con = duckdb.connect()
+    total = 0
     print(f"{'year':<6} {'csv':>10} {'parquet':>10} {'ratio':>6} {'rows':>14}")
     for year in YEARS:
         csv = RAW / "eaglei" / str(year) / f"eaglei_outages_{year}.csv"
@@ -351,11 +323,13 @@ def step_convert() -> None:
             raise Stop(f"{out.name}: {rows:,} rows, expected {expected:,}")
         c, p = csv.stat().st_size, out.stat().st_size
         print(f"{year:<6} {human(c):>10} {human(p):>10} {p / c:>6.1%} {rows:>14,}")
+        total += rows
     print("Excel sources to raw-row Parquet (D27):")
     import raw_convert
 
     for out in raw_convert.ensure_converted():
         print(f"  {out.relative_to(REPO_ROOT)}")
+    return total
 
 
 def upload_list() -> list[tuple[Path, str]]:
@@ -377,9 +351,9 @@ def upload_list() -> list[tuple[Path, str]]:
     return items
 
 
-def step_upload(w: WorkspaceClient, warehouse_id: str) -> None:
+def step_upload(w: WorkspaceClient, warehouse_id: str) -> int:
     # The schema and volume must exist first: run the setup statements of 01_bronze.sql.
-    for stmt in split_statements((SQL_DIR / "01_bronze.sql").read_text()):
+    for stmt in split_statements(pipeline_config.render((SQL_DIR / "01_bronze.sql").read_text())):
         if re.match(r"^\s*CREATE\s+(SCHEMA|VOLUME)\b", strip_comments(stmt), re.I):
             print(f"  {summary(stmt)}")
             run_sql(w, warehouse_id, stmt)
@@ -402,26 +376,68 @@ def step_upload(w: WorkspaceClient, warehouse_id: str) -> None:
         if meta.content_length != size:
             raise Stop(f"{remote}: uploaded {meta.content_length} bytes, expected {size}")
         print(f"  {remote}: {human(size)} in {time.time() - started:.0f}s")
+    return len(upload_list())
 
 
-def step_sql(w: WorkspaceClient, warehouse_id: str) -> None:
-    for name in SQL_FILES:
-        statements = split_statements((SQL_DIR / name).read_text())
+CREATED = re.compile(r"^\s*(?:CREATE\s+OR\s+REPLACE\s+TABLE|INSERT\s+OVERWRITE)\s+(\w+)", re.I)
+
+
+def check_years() -> None:
+    """Every configured year needs its own Bronze statement: the column layout differs by year (D2, D47)."""
+    text = (SQL_DIR / "01_bronze.sql").read_text()
+    missing = [y for y in YEARS if f"CREATE OR REPLACE TABLE bronze_eaglei_{y}" not in text]
+    if missing:
+        raise Stop(f"config years {missing} have no Bronze statement in 01_bronze.sql; add one per year")
+
+
+def step_sql(w: WorkspaceClient, warehouse_id: str, log: RunLog) -> None:
+    import quality_checks
+
+    check_years()
+    run_ts = datetime.now(timezone.utc).replace(microsecond=0, tzinfo=None)
+    for i, name in enumerate(SQL_FILES):
+        statements = split_statements(pipeline_config.render((SQL_DIR / name).read_text()))
         print(f"\n{name}: {len(statements)} statements")
-        for k, stmt in enumerate(statements, 1):
-            head = summary(stmt)
-            if SKIPPED.match(strip_comments(stmt)):
-                print(f"  [{k:>2}] skip (session statement): {head}")
-                continue
-            started = time.time()
-            rows = run_sql(w, warehouse_id, stmt)
-            print(f"  [{k:>2}] ok {time.time() - started:6.1f}s  {head}")
-            if re.match(r"^\s*SELECT\b", strip_comments(stmt), re.I):
-                for row in rows[:12]:
-                    print(f"         {row}")
+        with log.step(f"sql {name}") as step:
+            step.rows = 0
+            for k, stmt in enumerate(statements, 1):
+                head = summary(stmt)
+                code = strip_comments(stmt)
+                if SKIPPED.match(code):
+                    print(f"  [{k:>2}] skip (session statement): {head}")
+                    continue
+                started = time.time()
+                rows = run_sql(w, warehouse_id, stmt)
+                print(f"  [{k:>2}] ok {time.time() - started:6.1f}s  {head}")
+                created = CREATED.match(code)
+                if created:
+                    n = int(run_sql(w, warehouse_id, f"SELECT COUNT(*) FROM {created.group(1)}")[0][0])
+                    step.rows += n
+                    log.info("table %s rows=%d (%.1fs)", created.group(1), n, time.time() - started)
+                elif re.match(r"^\s*SELECT\b", code, re.I):
+                    for row in rows[:12]:
+                        print(f"         {row}")
+        layer = LAYER_OF_PREFIX[name[:2]]
+        is_last = i + 1 == len(SQL_FILES) or LAYER_OF_PREFIX[SQL_FILES[i + 1][:2]] != layer
+        if is_last:
+            with log.step(f"quality gate {layer}") as step:
+                try:
+                    step.rows = len(quality_checks.databricks_gate(w, warehouse_id, [layer], log, run_ts))
+                except quality_checks.QualityFailed as e:
+                    raise Stop(f"Quality gate after {layer} failed; later layers were not built.\n{e}") from e
 
 
-def step_verify(w: WorkspaceClient, warehouse_id: str) -> None:
+def step_quality(w: WorkspaceClient, warehouse_id: str, log: RunLog) -> int:
+    import quality_checks
+
+    run_ts = datetime.now(timezone.utc).replace(microsecond=0, tzinfo=None)
+    try:
+        return len(quality_checks.databricks_gate(w, warehouse_id, quality_checks.LAYERS, log, run_ts))
+    except quality_checks.QualityFailed as e:
+        raise Stop(str(e)) from e
+
+
+def step_verify(w: WorkspaceClient, warehouse_id: str) -> int:
     problems = []
     tables = [r[1] for r in run_sql(w, warehouse_id, f"SHOW TABLES IN {CATALOG}.{SCHEMA}")]
     print(f"\nRow counts in {CATALOG}.{SCHEMA}:")
@@ -436,7 +452,7 @@ def step_verify(w: WorkspaceClient, warehouse_id: str) -> None:
         flag = "" if exp is None or exp == n else "  <-- DIFFERS"
         if flag:
             problems.append(f"{table}: {n:,} vs DuckDB {exp:,}")
-        print(f"  {table:<24} {n:>14,} {exp if exp is None else format(exp, ','):>14}{flag}")
+        print(f"  {table:<24} {n:>14,} {'-' if exp is None else format(exp, ','):>14}{flag}")
 
     print("\nDetail checks:")
     for label, sql in DETAIL_SQL.items():
@@ -465,6 +481,7 @@ def step_verify(w: WorkspaceClient, warehouse_id: str) -> None:
     if problems:
         raise Stop("Differences from DuckDB:\n  " + "\n  ".join(problems))
     print("\nAll counts and the top 10 match DuckDB.")
+    return len(tables)
 
 
 def main() -> int:
@@ -472,27 +489,36 @@ def main() -> int:
     parser.add_argument("--steps", default="check,convert,upload,sql,verify")
     args = parser.parse_args()
     steps = [s.strip() for s in args.steps.split(",")]
+    log = RunLog("pipeline")
+    log.info("steps %s; target %s.%s; years %s", ",".join(steps), CATALOG, SCHEMA, list(YEARS))
     try:
         w = warehouse_id = None
         if any(s != "convert" for s in steps):
             w, warehouse_id = connect()
         for step in steps:
             print(f"\n=== {step} ===")
-            if step == "check":
-                step_check(w, warehouse_id)
-            elif step == "convert":
-                step_convert()
-            elif step == "upload":
-                step_upload(w, warehouse_id)
-            elif step == "sql":
-                step_sql(w, warehouse_id)
-            elif step == "verify":
-                step_verify(w, warehouse_id)
-            else:
-                raise Stop(f"Unknown step {step}")
+            if step == "sql":
+                step_sql(w, warehouse_id, log)  # logs one step per SQL file and per quality gate
+                continue
+            with log.step(step) as s:
+                if step == "check":
+                    step_check(w, warehouse_id)
+                elif step == "convert":
+                    s.rows = step_convert()
+                elif step == "upload":
+                    s.rows = step_upload(w, warehouse_id)
+                elif step == "verify":
+                    s.rows = step_verify(w, warehouse_id)
+                elif step == "quality":
+                    s.rows = step_quality(w, warehouse_id, log)
+                else:
+                    raise Stop(f"Unknown step {step}")
     except Stop as e:
         print(f"\nSTOPPED: {e}", file=sys.stderr)
+        log.info("stopped: %s", str(e).splitlines()[0])
         return 1
+    finally:
+        log.summary()
     return 0
 
 
