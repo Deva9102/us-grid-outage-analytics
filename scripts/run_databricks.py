@@ -91,7 +91,9 @@ EXPECTED_COUNTS = {
     "gold_state_coverage": 53,
     "bronze_storm_event_severity": 54,
     "gold_event_storm_match": 446_261,
-    "gold_county_reliability": 9_189,
+    "gold_unit_reliability": 9_189,
+    "gold_county_reliability": 9_159,
+    "gold_territory_unit_reliability": 30,
     "gold_state_reliability": 153,
     "gold_territory_reliability": 6,
     "gold_utility_reliability": 2_204,
@@ -127,10 +129,11 @@ EXPECTED_DETAIL = {
     "states below 70% coverage (D22)": [("0",)],
     "storm-matched events per year (D37, D42)": [("2022", "17823"), ("2023", "19332"), ("2024", "18448")],
     "rank 1 state per year (D38, D43)": [("2022", "ME"), ("2023", "ME"), ("2024", "SC")],
-    "ranked counties per year (D38)": [("2022", "3020"), ("2023", "3020"), ("2024", "3020")],
+    "ranked counties per year (D38, D44)": [("2022", "3010"), ("2023", "3010"), ("2024", "3010")],
     "utility rows flagged as source errors (D39)": [("2023", "54913")],
     "OE-417 check status (D40)": [("matched", "180"), ("no county", "185"), ("no time", "70"), ("not matched", "303")],
     "Helene top-10 attribution (D41)": [("37021", "Tropical Storm"), ("45045", "Tropical Storm"), ("45083", "Tropical Storm")],
+    "rank 1 county per year (D44)": [("2022", "12015"), ("2023", "48015"), ("2024", "37199")],
 }
 DETAIL_SQL = {
     "feed gaps per year (D3)":
@@ -166,7 +169,7 @@ DETAIL_SQL = {
         "FROM gold_event_storm_match GROUP BY 1 ORDER BY 1",
     "rank 1 state per year (D38, D43)":
         "SELECT CAST(year AS STRING), state_abbr FROM gold_state_reliability WHERE national_rank = 1 ORDER BY 1",
-    "ranked counties per year (D38)":
+    "ranked counties per year (D38, D44)":
         "SELECT CAST(year AS STRING), CAST(COUNT_IF(ranking_eligible) AS STRING) FROM gold_county_reliability GROUP BY 1 ORDER BY 1",
     "utility rows flagged as source errors (D39)":
         "SELECT CAST(data_year AS STRING), utility_number FROM gold_utility_reliability WHERE data_quality_flag IS NOT NULL ORDER BY 1",
@@ -175,6 +178,8 @@ DETAIL_SQL = {
     "Helene top-10 attribution (D41)":
         "SELECT fips_code, storm_type FROM (SELECT * FROM gold_event_storm_match ORDER BY customer_hours_lost DESC LIMIT 10) "
         "WHERE fips_code IN ('45045', '45083', '37021') ORDER BY fips_code",
+    "rank 1 county per year (D44)":
+        "SELECT CAST(year AS STRING), fips_code FROM gold_county_reliability WHERE national_rank = 1 ORDER BY 1",
 }
 
 FORBIDDEN = re.compile(r"\b(DROP|ALTER|TRUNCATE|DELETE|GRANT|REVOKE)\b", re.I)

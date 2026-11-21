@@ -173,15 +173,23 @@ def report_reliability(con) -> None:
                  FROM gold_state_reliability WHERE region_rank = 1 ORDER BY year, census_region""")
     check("state ranks run 1..n per year without gaps at the top",
           con.execute("SELECT year, MIN(national_rank) FROM gold_state_reliability GROUP BY 1 ORDER BY 1").fetchall() == [(2022, 1), (2023, 1), (2024, 1)])
-    print("\n=== County reliability (D38), top 5 per year ===")
+    print("\n=== County reliability (D38, D44: 50 states and DC), top 5 per year ===")
     show(con, """SELECT year, national_rank AS rk, fips_code, county, state_abbr AS st, customers,
-                        ROUND(outage_hours_per_1000_customers) AS hours_per_1000, geography_note
+                        ROUND(outage_hours_per_1000_customers) AS hours_per_1000
                  FROM gold_county_reliability WHERE national_rank <= 5 ORDER BY year, rk""")
+    print("\nTerritory reporting units (D44, unranked), 2022:")
+    show(con, """SELECT year, reporting_unit, state_abbr AS st, customers, ROUND(outage_hours_per_1000_customers) AS hours_per_1000,
+                        geography_note
+                 FROM gold_territory_unit_reliability WHERE year = 2022 ORDER BY hours_per_1000 DESC""")
+    check("county ranking holds the 50 states and DC only; 30 territory unit rows moved (D44)",
+          one(con, "SELECT COUNT(*) FROM gold_county_reliability WHERE state_abbr IN ('PR', 'VI')") == 0
+          and one(con, "SELECT COUNT(*) FROM gold_territory_unit_reliability") == 30
+          and one(con, "SELECT COUNT(*) FROM gold_county_reliability") + 30 == one(con, "SELECT COUNT(*) FROM gold_unit_reliability"))
     show(con, """SELECT year, COUNT(*) AS counties, COUNT_IF(ranking_eligible) AS ranked,
                         COUNT_IF(customers IS NULL) AS no_denominator, COUNT_IF(customers < 1000) AS under_1000
                  FROM gold_county_reliability GROUP BY 1 ORDER BY 1""")
-    check("county outage hours add up to Gold event customer-hours",
-          abs(one(con, "SELECT SUM(customer_hours_lost) FROM gold_county_reliability")
+    check("reporting-unit outage hours add up to Gold event customer-hours",
+          abs(one(con, "SELECT SUM(customer_hours_lost) FROM gold_unit_reliability")
               - one(con, "SELECT SUM(customer_hours_lost) FROM gold_outage_events WHERE fips_code IN (SELECT fips_code FROM dim_county_customers)")) < 1)
 
     print("\n=== Utility reliability (D39) ===")
@@ -227,7 +235,9 @@ def report_oe417(con) -> None:
 def expected(con) -> None:
     print("\n=== Expected values for run_databricks.py ===")
     show(con, """SELECT 'gold_event_storm_match' t, COUNT(*) n FROM gold_event_storm_match
+                 UNION ALL SELECT 'gold_unit_reliability', COUNT(*) FROM gold_unit_reliability
                  UNION ALL SELECT 'gold_county_reliability', COUNT(*) FROM gold_county_reliability
+                 UNION ALL SELECT 'gold_territory_unit_reliability', COUNT(*) FROM gold_territory_unit_reliability
                  UNION ALL SELECT 'gold_state_reliability', COUNT(*) FROM gold_state_reliability
                  UNION ALL SELECT 'gold_territory_reliability', COUNT(*) FROM gold_territory_reliability
                  UNION ALL SELECT 'gold_utility_reliability', COUNT(*) FROM gold_utility_reliability
