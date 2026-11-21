@@ -3,7 +3,8 @@
 -- Gold layer: reliability rankings. Runs after 03_gold_coverage.sql (D26).
 --
 --   gold_county_reliability          outage hours per 1,000 customers per county and year (D38)
---   gold_state_reliability           the same per state, with D22 coverage alongside (D38)
+--   gold_state_reliability           the same per state, 50 states and DC, with D22 coverage (D38, D43)
+--   gold_territory_reliability       the same for Puerto Rico and the Virgin Islands, unranked (D43)
 --   gold_utility_reliability         EIA-861 SAIDI / SAIFI ranked within size bands, IEEE 1366 only (D39)
 --   gold_utility_reliability_other   other-standard utilities, listed, not ranked (D23, D39)
 --
@@ -87,10 +88,11 @@ FROM rated;
 
 
 CREATE OR REPLACE TABLE gold_state_reliability
-COMMENT 'Outage hours per 1,000 customers per state and year with D22 coverage, ranked where eligible (D38)'
+COMMENT 'Outage hours per 1,000 customers per year for the 50 states and DC, with D22 coverage, ranked where eligible (D38, D43)'
 AS
 WITH
 -- Per-1,000 uses only counties with a denominator; raw totals use all counties (D9).
+-- Only the 50 states and DC are ranked here; territories have their own table (D43).
 states AS (
     SELECT
         year,
@@ -103,6 +105,7 @@ states AS (
         SUM(CASE WHEN customers IS NOT NULL THEN customer_hours_lost END) AS customer_hours_with_denominator,
         SUM(customers)                                                  AS customers
     FROM gold_county_reliability
+    WHERE census_region <> 'Territory'
     GROUP BY year, state_abbr
 )
 SELECT
@@ -124,13 +127,46 @@ SELECT
                            ORDER BY s.customer_hours_with_denominator * 1000.0 / NULLIF(s.customers, 0) DESC) END AS national_rank,
     CASE WHEN c.ranking_eligible
          THEN RANK() OVER (PARTITION BY s.year, s.census_region, c.ranking_eligible
-                           ORDER BY s.customer_hours_with_denominator * 1000.0 / NULLIF(s.customers, 0) DESC) END AS region_rank,
-    CASE s.state_abbr
+                           ORDER BY s.customer_hours_with_denominator * 1000.0 / NULLIF(s.customers, 0) DESC) END AS region_rank
+FROM states AS s
+LEFT JOIN gold_state_coverage AS c ON c.state_abbr = s.state_abbr;
+
+
+CREATE OR REPLACE TABLE gold_territory_reliability
+COMMENT 'Outage hours per 1,000 customers per year for Puerto Rico and the US Virgin Islands, same metrics, unranked (D43)'
+AS
+WITH
+-- Same aggregation as gold_state_reliability, for the territories only (D43).
+territories AS (
+    SELECT
+        year,
+        state_abbr,
+        MAX(state_name)                                                 AS state_name,
+        SUM(events)                                                     AS events,
+        SUM(customer_hours_lost)                                        AS customer_hours_lost,
+        SUM(CASE WHEN customers IS NOT NULL THEN customer_hours_lost END) AS customer_hours_with_denominator,
+        SUM(customers)                                                  AS customers,
+        COUNT(*)                                                        AS reporting_units
+    FROM gold_county_reliability
+    WHERE census_region = 'Territory'
+    GROUP BY year, state_abbr
+)
+SELECT
+    t.year,
+    t.state_abbr,
+    t.state_name,
+    t.events,
+    t.customer_hours_lost,
+    t.customers,
+    t.customer_hours_with_denominator * 1000.0 / NULLIF(t.customers, 0) AS outage_hours_per_1000_customers,
+    t.reporting_units,
+    c.customer_coverage,
+    CASE t.state_abbr
         WHEN 'PR' THEN 'Results for Puerto Rico are for the 7 PREPA operating regions, not municipios'
         WHEN 'VI' THEN 'Reported by island'
     END AS geography_note
-FROM states AS s
-LEFT JOIN gold_state_coverage AS c ON c.state_abbr = s.state_abbr;
+FROM territories AS t
+LEFT JOIN gold_state_coverage AS c ON c.state_abbr = t.state_abbr;
 
 
 CREATE OR REPLACE TABLE gold_utility_reliability
