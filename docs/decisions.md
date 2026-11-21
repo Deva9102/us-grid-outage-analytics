@@ -25,6 +25,7 @@ Row counts come from DuckDB runs against the raw EAGLE-I files
 | D17 | Outage event definition and event metrics | Gold | 2026-11-20 |
 | D18 | Event threshold scales with county size: GREATEST(100, 0.25% x customers) | Gold | 2026-11-20 |
 | D19 | County feed dropouts cannot end or split an event | Gold | 2026-11-20 |
+| D20 | Yearly EAGLE-I files reach Bronze as all-STRING Parquet | Bronze | 2026-11-20 |
 
 ---
 
@@ -416,7 +417,8 @@ zone-less timestamp uses the session time zone, so fixing it to UTC makes D1 hol
 workspace defaults. The explicit MCC schema also sidesteps the byte-order mark at the start of
 `MCC.csv`, which would otherwise end up in the first column name.
 
-**Rows affected:** none changed. The Bronze tables add `source_file` and `loaded_at`.
+**Rows affected:** none changed. The Bronze tables add `source_file` and `loaded_at`. The yearly
+files are read from Parquet with the same all-STRING columns (D20).
 
 ## D15. Rows that cannot be parsed
 
@@ -725,6 +727,58 @@ FL shows the same kind of dropout during Milton.
 - A real restoration of over 90% that is undone within an hour would be misread as a dropout. At
   the scale of the large cases above that is not plausible; for small counts it hardly matters,
   because the 1-hour rule of D17 already bridges most short gaps.
+
+## D20. Yearly files reach Bronze as Parquet
+
+**What:** `scripts/run_databricks.py` converts each yearly EAGLE-I CSV to Parquet with DuckDB
+(`read_csv(..., all_varchar = true)`, zstd), writes it to `data/raw/eaglei_parquet/<year>/`
+(gitignored) and uploads it to `/Volumes/workspace/outages/raw/eaglei_parquet/<year>/`.
+`01_bronze.sql` reads these with `read_files(..., format => 'parquet')` and the same explicit
+all-STRING schema as before. The small files (MCC, coverage history, DQI, region lookup) stay CSV.
+
+**Why:** The CSVs are 3.5 GB; the Parquet files are 155 MB, so the upload to the Free Edition
+volume takes about 30 seconds and Bronze loads read far less. Every column stays STRING, so D14
+still holds: no value is typed, trimmed or changed before Silver. The raw CSVs remain the source of
+record in `data/raw/eaglei/`.
+
+**Rows affected:** none changed. The conversion checks that each Parquet file has the CSV's row count
+and only STRING columns.
+
+| Year | CSV | Parquet | Ratio | Rows |
+|---|---|---|---|---|
+| 2022 | 1.1 GB | 63.0 MB | 5.6% | 25,796,465 |
+| 2023 | 1.1 GB | 62.6 MB | 5.5% | 26,101,051 |
+| 2024 | 1.3 GB | 29.2 MB | 2.1% | 27,701,334 |
+
+## Databricks run
+
+`scripts/run_databricks.py` ran `01_bronze.sql`, `02_silver.sql` and `03_gold_events.sql` statement
+by statement on the Serverless Starter Warehouse (session time zone `Etc/UTC`, catalog `workspace`,
+schema `outages`) on 2026-11-20. Every statement succeeded on the first run; `silver_outages` took
+88 seconds and each Gold table under 10 seconds.
+
+The Statement Execution API runs each statement in its own session, so the `USE` and
+`SET TIME ZONE` lines in the .sql files are skipped. Catalog and schema are passed with every
+statement, and the script stops unless the session time zone is UTC (D1).
+
+Every table matches the DuckDB results:
+
+| Table | Rows (Databricks = DuckDB) |
+|---|---|
+| bronze_eaglei_2022 / 2023 / 2024 | 25,796,465 / 26,101,051 / 27,701,334 |
+| bronze_eaglei_mcc | 3,234 |
+| bronze_state_regions | 53 |
+| dim_county_customers | 3,063 |
+| silver_outages | 79,598,850 |
+| gold_collection_runs | 105,216 |
+| gold_event_thresholds | 3,063 |
+| gold_feed_dropouts | 19,050 |
+| gold_outage_events | 442,362 |
+
+Also identical: feed gaps per year (3 / 16 / 41), events per year (148,425 / 143,479 / 150,458),
+dropouts per year (6,746 / 5,736 / 6,568), `exceeds_customers` rows per year (1,820 / 365 / 8,434),
+denominator sources (2,687 / 372 / 2 / 2), and the top 10 events by `customer_hours_lost`, by
+event ID and customer-hours (D17).
 
 ---
 
