@@ -49,6 +49,7 @@ Row counts come from DuckDB runs against the raw EAGLE-I files
 | D41 | Storm attribution: most severe storm active at the outage start, else largest overlap (resolves Q6) | Gold | 2026-11-21 |
 | D42 | Storm window closes 1 hour after NOAA's end time (resolves Q7) | Gold | 2026-11-21 |
 | D43 | State rankings: 50 states and DC; PR and VI reported separately, unranked (resolves Q8) | Gold | 2026-11-21 |
+| D44 | County rankings: 50 states and DC; PR and VI reporting units reported separately, unranked | Gold | 2026-11-21 |
 
 ---
 
@@ -1616,13 +1617,15 @@ events are unchanged in cause (D37).
 
 ## D43. State rankings cover the 50 states and DC; territories reported separately (resolves Q8)
 
+**Extended by D44** to county rankings.
+
 **What:**
 - `gold_state_reliability` now holds only the 50 states and DC. National and Census-region ranks are
   computed among them.
 - Puerto Rico and the US Virgin Islands move to `gold_territory_reliability`, with the same metrics
   (events, customer-hours, customers, outage hours per 1,000 customers, coverage), the number of
   reporting units, the geography note, and no rank.
-- County rankings (`gold_county_reliability`) are unchanged.
+- County rankings (`gold_county_reliability`) were unchanged by D43; D44 applies the same rule to them.
 
 **Why:** Puerto Rico's 7 reporting units are PREPA operating regions and the Virgin Islands report by
 island (D22). Their grids are islanded, and their storm exposure differs in kind. Ranking them with the
@@ -1640,6 +1643,41 @@ states, down the table.
 
 Territories, outage hours per 1,000 customers: PR 186,176 / 29,135 / 74,642 and VI 42,494 / 39,899 /
 118,383 (2022 / 2023 / 2024).
+
+## D44. County rankings cover the 50 states and DC; territory units reported separately
+
+**What:**
+- `gold_unit_reliability` (new) computes outage hours per 1,000 customers for every EAGLE-I reporting
+  unit and year, unranked, with the D38 metric and eligibility rules.
+- `gold_county_reliability` now selects only units in the 50 states and DC from it and ranks them
+  (national and within state, D38).
+- Puerto Rico's 7 PREPA operating regions and the Virgin Islands' 3 island districts move to
+  `gold_territory_unit_reliability`: the same metrics, with the reporting unit, its customers and a
+  geography note, and no rank.
+- `gold_state_reliability` and `gold_territory_reliability` now aggregate from `gold_unit_reliability`;
+  their values are unchanged.
+
+**Why:** This is the rule of D43 applied to counties. A PREPA region holds 68,000-395,000 customers
+across several municipios, and a Virgin Islands district is a whole island with its own grid.
+Neither is a county, so ranking them with counties compares unlike units: in 2022 the five top
+"counties" were all PREPA regions.
+
+**Rows affected:** 30 rows moved (10 units x 3 years). `gold_county_reliability` goes from 9,189 to
+9,159 rows, and ranked counties per year from 3,020 to 3,010. Every remaining county keeps its values;
+only ranks change.
+
+New top 5 counties (outage hours per 1,000 customers):
+
+| Year | 1 | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|
+| 2022 | Charlotte FL (123,103) | Franklin city VA (114,868) | Lee FL (102,091) | Hamilton NY (91,128) | Alcona MI (87,241) |
+| 2023 | Austin TX (117,505) | Marion TX (115,955) | Mono CA (115,687) | Del Norte CA (107,263) | Madison FL (101,007) |
+| 2024 | Yancey NC (497,902) | Mitchell NC (387,703) | Atkinson GA (352,557) | Jeff Davis GA (305,017) | Appling GA (226,341) |
+
+Only 2022 changes: Mayagüez, Ponce, Caguas, Arecibo and Carolina (PREPA regions) held ranks 1-5.
+Charlotte FL, Franklin city VA, Lee FL, Hamilton NY and Alcona MI move up from ranks 6, 7, 8, 10 and
+11 (Bayamón held rank 9). In 2023 and 2024 no territory unit was in the top 5; the highest were St. John
+VI at 17 (2023) and 12 (2024).
 
 ---
 
