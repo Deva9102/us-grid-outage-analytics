@@ -27,12 +27,14 @@ from pathlib import Path
 
 import requests
 
+import pipeline_config
+
 ARTICLE_ID = 24237376
 ARTICLE_VERSION = 4
 LANDING_PAGE = f"https://doi.org/10.6084/m9.figshare.{ARTICLE_ID}.v{ARTICLE_VERSION}"
 API_URL = f"https://api.figshare.com/v2/articles/{ARTICLE_ID}/versions/{ARTICLE_VERSION}"
 
-DEFAULT_YEARS = [2022, 2023, 2024]
+DEFAULT_YEARS = pipeline_config.load()["years"]["list"]
 METADATA_FILES = ["MCC.csv", "coverage_history.csv", "DQI.csv"]
 
 REPO_ROOT = Path(__file__).resolve().parent.parent

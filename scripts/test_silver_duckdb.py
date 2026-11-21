@@ -29,10 +29,12 @@ from pathlib import Path
 
 import duckdb
 
+import pipeline_config
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 RAW = REPO_ROOT / "data" / "raw"
 REGIONS_CSV = REPO_ROOT / "data" / "reference" / "state_regions.csv"
-YEARS = (2022, 2023, 2024)
+YEARS = tuple(pipeline_config.load()["years"]["list"])
 
 
 def bronze(con: duckdb.DuckDBPyConnection, month_filter: str | None) -> None:
@@ -93,7 +95,7 @@ def bronze_sources(con: duckdb.DuckDBPyConnection) -> None:
         con.execute(f"CREATE OR REPLACE VIEW {name} AS SELECT * FROM read_csv('{(ref / file).as_posix()}', all_varchar = true, header = true)")
 
 
-D21_SCALING = "CASE WHEN s.d13_customers > 1.25 * e.customers THEN s.d13_customers / e.customers ELSE 1.0 END"
+D21_SCALING = "CASE WHEN s.d13_customers > ${calibration.state_ratio} * e.customers THEN s.d13_customers / e.customers ELSE 1.0 END"
 D35_FLOOR = "COALESCE(p.peak_customers_out, 0)"
 
 
@@ -119,7 +121,7 @@ def dim_sql(mode: str = "d35") -> str:
         query = query.replace(D35_FLOOR, "0")
     elif mode != "d35":
         raise ValueError(mode)
-    return "CREATE OR REPLACE TABLE dim_county_customers AS " + sql_dialect.to_duckdb(query)
+    return "CREATE OR REPLACE TABLE dim_county_customers AS " + sql_dialect.to_duckdb(pipeline_config.render(query))
 
 
 def build_dim(con: duckdb.DuckDBPyConnection, mode: str = "d35") -> None:

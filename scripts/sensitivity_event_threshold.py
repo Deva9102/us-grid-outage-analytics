@@ -27,10 +27,13 @@ from datetime import datetime
 
 import duckdb
 
+import pipeline_config
 import test_gold_events_duckdb as gold
 import test_silver_duckdb as silver
 
+# Candidate shares compared by this experiment; the pipeline value is events.threshold_share in config.
 SHARES = [0.0, 0.001, 0.0015, 0.0025, 0.005]
+LARGE = pipeline_config.get("events.large_outage_customers")
 
 PINELLAS, WAYNE, LOS_ANGELES, HARRIS, FORT_BEND = "12103", "26163", "06037", "48201", "48157"
 
@@ -133,7 +136,7 @@ def main() -> None:
         GROUP BY ALL
     """)
 
-    # Large baseline events (peak >= 10,000 customers out) and the time of each one's peak. A share
+    # Large baseline events (peak >= events.large_outage_customers) and the time of each one's peak. A share
     # that leaves no event at that time has stopped counting a real outage.
     con.execute(f"""
         CREATE TABLE base_large AS
@@ -141,7 +144,7 @@ def main() -> None:
                arg_max(s.reading_time, s.customers_out) AS peak_time
         FROM {base} e JOIN silver_outages s
           ON s.fips_code = e.fips_code AND s.reading_time >= e.event_start AND s.reading_time < e.event_end
-        WHERE e.peak_customers_out >= 10000
+        WHERE e.peak_customers_out >= {LARGE}
         GROUP BY ALL
     """)
 
@@ -276,7 +279,7 @@ def main() -> None:
                               AND b.peak_time >= e.event_start AND b.peak_time < e.event_end)
         """).fetchone()
         n_large = con.execute("SELECT COUNT(*) FROM base_large").fetchone()[0]
-        print(f"\nLarge baseline events (peak >= 10,000) no longer counted at all: {lost[0]:,} of {n_large:,} "
+        print(f"\nLarge baseline events (peak >= {LARGE:,}) no longer counted at all: {lost[0]:,} of {n_large:,} "
               f"in {lost[1] or 0} counties, largest peak {lost[2] or 0:,}, "
               f"baseline customer-hours {(lost[3] or 0) / 1e6:.2f} M")
         if lost[0]:

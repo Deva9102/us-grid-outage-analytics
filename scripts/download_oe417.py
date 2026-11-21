@@ -31,6 +31,8 @@ import openpyxl
 import requests
 import xlrd
 
+import pipeline_config
+
 from download_utils import HEADERS, RAW, FetchFailed, ManualFile, Report, fetch
 
 PAGE = "https://www.oe.netl.doe.gov/OE417_annual_summary.aspx"
@@ -113,7 +115,7 @@ def official_id(year: int) -> int | None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--years", type=int, nargs="+", default=[2022, 2023, 2024])
+    parser.add_argument("--years", type=int, nargs="+", default=pipeline_config.load()["years"]["list"])
     args = parser.parse_args()
     report = Report()
     for year in args.years:

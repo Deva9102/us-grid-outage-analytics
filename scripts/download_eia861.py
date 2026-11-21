@@ -23,6 +23,8 @@ import zipfile
 
 import openpyxl
 
+import pipeline_config
+
 from download_utils import RAW, FetchFailed, ManualFile, Report, fetch, remote_size
 
 PAGE = "https://www.eia.gov/electricity/data/eia861/"
@@ -54,7 +56,7 @@ def verify_and_extract(zpath, year: int) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--years", type=int, nargs="+", default=[2022, 2023, 2024])
+    parser.add_argument("--years", type=int, nargs="+", default=pipeline_config.load()["years"]["list"])
     args = parser.parse_args()
     report = Report()
     for year in args.years:

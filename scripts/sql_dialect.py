@@ -17,6 +17,7 @@ small set of rewrites, so local tests exercise the real code:
     to_utc_timestamp(x, tz)           -> CAST(timezone(tz, x) AS TIMESTAMP)   (session TimeZone = UTC)
 
 Statements must have the form  CREATE OR REPLACE TABLE <name> COMMENT '...' AS <query>;
+Configuration placeholders ${section.key} are substituted from config/pipeline.yml first (D47).
 """
 
 from __future__ import annotations
@@ -123,6 +124,8 @@ def to_duckdb(sql: str) -> str:
 
 def table_statements(path: Path) -> list[tuple[str, str]]:
     """(table name, DuckDB query) for each CREATE OR REPLACE TABLE ... AS <query>; in a file."""
-    text = path.read_text()
+    import pipeline_config
+
+    text = pipeline_config.render(path.read_text())
     pattern = re.compile(r"^CREATE OR REPLACE TABLE (\w+)\s*\nCOMMENT '(?:[^']|'')*'\s*\nAS\s*\n(.*?);\s*$", re.S | re.M)
     return [(name, to_duckdb(query)) for name, query in pattern.findall(text)]

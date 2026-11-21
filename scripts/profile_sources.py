@@ -27,6 +27,8 @@ import duckdb
 import pandas as pd
 import xlrd
 
+import pipeline_config
+
 import test_gold_events_duckdb as gold
 import test_silver_duckdb as silver
 
@@ -34,7 +36,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 RAW = REPO_ROOT / "data" / "raw"
 OUT = REPO_ROOT / "docs" / "data_profile_sources.md"
 REGIONS = REPO_ROOT / "data" / "reference" / "state_regions.csv"
-YEARS = (2022, 2023, 2024)
+YEARS = tuple(pipeline_config.load()["years"]["list"])
 
 # NOAA event types that plausibly cause power outages, for the event-level match rates.
 OUTAGE_TYPES = [

@@ -24,28 +24,24 @@ from pathlib import Path
 
 import duckdb
 
+import pipeline_config
 import test_silver_duckdb as silver
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 GOLD_SQL = REPO_ROOT / "sql" / "databricks" / "03_gold_events.sql"
 GOLD_TABLES = ["gold_collection_runs", "gold_event_thresholds", "gold_feed_dropouts", "gold_outage_events"]
 
-SHARE_PATTERN = re.compile(r"CAST\(([0-9.]+) AS DOUBLE\) AS event_share")
-
-
-
 def current_share() -> float:
-    return float(SHARE_PATTERN.search(GOLD_SQL.read_text()).group(1))
+    return float(pipeline_config.get("events.threshold_share"))
 
 
 def gold_statements(share: float | None = None) -> list[tuple[str, str]]:
     """(table name, query) for each CREATE OR REPLACE TABLE ... AS <query>; in the file.
 
-    With share given, event_share is replaced by that value (used by the sensitivity test).
+    With share given, events.threshold_share is overridden for this run (used by the sensitivity test).
     """
-    text = GOLD_SQL.read_text()
-    if share is not None:
-        text = SHARE_PATTERN.sub(f"CAST({share!r} AS DOUBLE) AS event_share", text)
+    overrides = {"events.threshold_share": float(share)} if share is not None else None
+    text = pipeline_config.render(GOLD_SQL.read_text(), overrides)
     pattern = re.compile(
         r"^CREATE OR REPLACE TABLE (\w+)\s*\nCOMMENT '[^']*'\s*\nAS\s*\n(.*?);\s*$",
         re.S | re.M,
@@ -86,8 +82,8 @@ def synthetic_check() -> None:
         11:45. Recovery comes 6 runs after the drop: not a dropout. Expect TWO events.
     """
     share = current_share()
-    t = int(math.ceil(max(100, share * 1_000_000)))
-    print(f"Event share in 03_gold_events.sql: {share:g} (threshold for 1,000,000 customers: {t:,})")
+    t = int(math.ceil(max(pipeline_config.get("events.min_customers_out"), share * 1_000_000)))
+    print(f"Event share (config events.threshold_share): {share:g} (threshold for 1,000,000 customers: {t:,})")
     con = duckdb.connect()
     con.execute("""
         CREATE TABLE dim_county_customers AS SELECT * FROM (VALUES

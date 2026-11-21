@@ -12,12 +12,12 @@
 
 SET TIME ZONE 'UTC';
 
-USE CATALOG workspace;
-USE SCHEMA outages;
+USE CATALOG ${project.catalog};
+USE SCHEMA ${project.schema};
 
 
 CREATE OR REPLACE TABLE gold_oe417_check
-COMMENT 'OE-417 incidents vs EAGLE-I events in the same counties, start within +/-12 hours (D24, D40)'
+COMMENT 'OE-417 incidents vs EAGLE-I events in the same counties, start within +/-${oe417_check.start_window_hours} hours (D24, D40)'
 AS
 WITH
 -- Matched counties per incident (D34).
@@ -26,7 +26,7 @@ incident_counties AS (
     FROM silver_oe417_locations
     WHERE fips_code IS NOT NULL
 ),
--- EAGLE-I events in those counties that start within 12 hours of the incident (D24).
+-- EAGLE-I events in those counties that start within oe417_check.start_window_hours of the incident (D24).
 candidates AS (
     SELECT
         i.incident_id,
@@ -38,8 +38,8 @@ candidates AS (
     INNER JOIN silver_oe417 AS o ON o.incident_id = i.incident_id
     INNER JOIN gold_outage_events AS e
         ON  e.fips_code = i.fips_code
-        AND e.event_start >= o.begin_utc - INTERVAL 12 HOURS
-        AND e.event_start <= o.begin_utc + INTERVAL 12 HOURS
+        AND e.event_start >= o.begin_utc - INTERVAL ${oe417_check.start_window_hours} HOURS
+        AND e.event_start <= o.begin_utc + INTERVAL ${oe417_check.start_window_hours} HOURS
     WHERE o.begin_utc IS NOT NULL
 ),
 -- Per incident: how many events and counties agree, and the summed peaks (one event per county).
@@ -77,9 +77,9 @@ SELECT
     CASE
         WHEN o.customers_affected IS NULL    THEN 'unknown'
         WHEN o.customers_affected = 0        THEN '0'
-        WHEN o.customers_affected < 1000     THEN '1-999'
-        WHEN o.customers_affected < 10000    THEN '1,000-9,999'
-        ELSE '10,000+'
+        WHEN o.customers_affected < ${oe417_check.band_low}     THEN '${oe417_check.band_low_label}'
+        WHEN o.customers_affected < ${oe417_check.band_high}    THEN '${oe417_check.band_mid_label}'
+        ELSE '${oe417_check.band_high_label}'
     END AS customers_band,
     -- Only incidents with a time and at least one matched county can be checked (D40).
     CASE

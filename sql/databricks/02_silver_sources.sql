@@ -20,8 +20,8 @@
 
 SET TIME ZONE 'UTC';
 
-USE CATALOG workspace;
-USE SCHEMA outages;
+USE CATALOG ${project.catalog};
+USE SCHEMA ${project.schema};
 
 
 -- -----------------------------------------------------------------------------
@@ -107,7 +107,7 @@ sales AS (
       AND TRIM(col_04) IN ('A', 'C', 'D')
     GROUP BY 1, 2, 3
 )
--- Size bands by Sales customers: small < 10,000; medium < 100,000; large < 500,000; very large (D32).
+-- Size bands by Sales customers, edges from utilities.size_band_edges (D32).
 SELECT
     s.data_year,
     s.utility_number,
@@ -123,9 +123,9 @@ SELECT
     c.customers AS customers,
     CASE
         WHEN c.customers IS NULL   THEN 'unknown'
-        WHEN c.customers < 10000   THEN 'small'
-        WHEN c.customers < 100000  THEN 'medium'
-        WHEN c.customers < 500000  THEN 'large'
+        WHEN c.customers < ${utilities.size_band_small}   THEN 'small'
+        WHEN c.customers < ${utilities.size_band_medium}  THEN 'medium'
+        WHEN c.customers < ${utilities.size_band_large}  THEN 'large'
         ELSE 'very_large'
     END AS size_band
 FROM standard AS s

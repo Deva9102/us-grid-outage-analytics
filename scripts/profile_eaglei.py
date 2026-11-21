@@ -17,10 +17,12 @@ from pathlib import Path
 
 import duckdb
 
+import pipeline_config
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 RAW_DIR = REPO_ROOT / "data" / "raw" / "eaglei"
 OUT_PATH = REPO_ROOT / "docs" / "data_profile.md"
-DEFAULT_YEARS = [2022, 2023, 2024]
+DEFAULT_YEARS = pipeline_config.load()["years"]["list"]
 
 # The customers-out measure has a different name in some years.
 CUSTOMERS_OUT_ALIASES = ["customers_out", "sum"]

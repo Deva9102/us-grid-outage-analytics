@@ -14,14 +14,14 @@
 --   data/reference/state_regions.csv                             -> /Volumes/workspace/outages/raw/reference/
 -- =============================================================================
 
-CREATE SCHEMA IF NOT EXISTS workspace.outages
+CREATE SCHEMA IF NOT EXISTS ${project.catalog}.${project.schema}
 COMMENT 'US power outages and storm impact pipeline';
 
-CREATE VOLUME IF NOT EXISTS workspace.outages.raw
+CREATE VOLUME IF NOT EXISTS ${project.catalog}.${project.schema}.${project.volume}
 COMMENT 'Raw source files, uploaded unchanged from data/raw/';
 
-USE CATALOG workspace;
-USE SCHEMA outages;
+USE CATALOG ${project.catalog};
+USE SCHEMA ${project.schema};
 
 
 -- -----------------------------------------------------------------------------
@@ -36,7 +36,7 @@ SELECT
     _metadata.file_path AS source_file,
     current_timestamp() AS loaded_at
 FROM read_files(
-    '/Volumes/workspace/outages/raw/eaglei_parquet/2022/',
+    '${project.volume_path}/eaglei_parquet/2022/',
     format => 'parquet',
     schema => 'fips_code STRING, county STRING, state STRING, customers_out STRING, run_start_time STRING'
 );
@@ -49,7 +49,7 @@ SELECT
     _metadata.file_path AS source_file,
     current_timestamp() AS loaded_at
 FROM read_files(
-    '/Volumes/workspace/outages/raw/eaglei_parquet/2023/',
+    '${project.volume_path}/eaglei_parquet/2023/',
     format => 'parquet',
     schema => 'fips_code STRING, county STRING, state STRING, `sum` STRING, run_start_time STRING'
 );
@@ -62,7 +62,7 @@ SELECT
     _metadata.file_path AS source_file,
     current_timestamp() AS loaded_at
 FROM read_files(
-    '/Volumes/workspace/outages/raw/eaglei_parquet/2024/',
+    '${project.volume_path}/eaglei_parquet/2024/',
     format => 'parquet',
     schema => 'fips_code STRING, county STRING, state STRING, customers_out STRING, run_start_time STRING, total_customers STRING'
 );
@@ -82,7 +82,7 @@ SELECT
     _metadata.file_path AS source_file,
     current_timestamp() AS loaded_at
 FROM read_files(
-    '/Volumes/workspace/outages/raw/eaglei/metadata/MCC.csv',
+    '${project.volume_path}/eaglei/metadata/MCC.csv',
     format => 'csv',
     header => true,
     schema => 'County_FIPS STRING, Customers STRING'
@@ -97,7 +97,7 @@ SELECT
     _metadata.file_path AS source_file,
     current_timestamp() AS loaded_at
 FROM read_files(
-    '/Volumes/workspace/outages/raw/reference/state_regions.csv',
+    '${project.volume_path}/reference/state_regions.csv',
     format => 'csv',
     header => true,
     schema => 'state_fips STRING, state_abbr STRING, state_name STRING, census_region STRING, census_division STRING, fema_region STRING'

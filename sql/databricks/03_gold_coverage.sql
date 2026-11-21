@@ -2,8 +2,8 @@
 -- 03_gold_coverage.sql
 -- Gold layer: EAGLE-I coverage per state (D22). Runs after 03_gold_events.sql (D26).
 --
---   gold_state_coverage   counties and customers covered per state; states below 70%
---                         customer coverage are footnoted, not ranked
+--   gold_state_coverage   counties and customers covered per state; states below
+--                         coverage.min_customer_coverage are footnoted, not ranked
 --
 -- scripts/test_sources_duckdb.py runs this statement in DuckDB. Keep it in the form
 -- CREATE OR REPLACE TABLE <name> COMMENT '...' AS <query>;
@@ -11,19 +11,19 @@
 
 SET TIME ZONE 'UTC';
 
-USE CATALOG workspace;
-USE SCHEMA outages;
+USE CATALOG ${project.catalog};
+USE SCHEMA ${project.schema};
 
 
 CREATE OR REPLACE TABLE gold_state_coverage
 COMMENT 'EAGLE-I coverage per state: counties with data, total counties, share of EIA-861 customers (D22)'
 AS
 WITH
--- Total counties come from the latest NWS zone-county file in effect during 2022-2024 (D22).
+-- Total counties come from the latest NWS zone-county file in effect during the loaded years (D22).
 latest_zone_file AS (
     SELECT version
     FROM silver_nws_zone_versions
-    WHERE effective_from <= make_date(2024, 12, 31)
+    WHERE effective_from <= make_date(${years.last}, 12, 31)
     QUALIFY ROW_NUMBER() OVER (ORDER BY effective_from DESC) = 1
 ),
 all_counties AS (
@@ -46,9 +46,9 @@ eaglei AS (
 eia AS (
     SELECT state_abbr, customers AS eia_customers
     FROM silver_eia_state_customers
-    WHERE data_year = 2024
+    WHERE data_year = ${calibration.eia_year}
 )
--- Customer coverage is capped at 100%; a state below 70% is footnoted, not ranked (D22).
+-- Customer coverage is capped at 100%; a state below coverage.min_customer_coverage is footnoted, not ranked (D22).
 SELECT
     r.state_abbr,
     r.state_name,
@@ -60,7 +60,7 @@ SELECT
     e.eaglei_customers,
     i.eia_customers,
     LEAST(e.eaglei_customers / NULLIF(i.eia_customers, 0), 1.0)       AS customer_coverage,
-    COALESCE(LEAST(e.eaglei_customers / NULLIF(i.eia_customers, 0), 1.0) >= 0.7, FALSE) AS ranking_eligible,
+    COALESCE(LEAST(e.eaglei_customers / NULLIF(i.eia_customers, 0), 1.0) >= ${coverage.min_customer_coverage}, FALSE) AS ranking_eligible,
     COALESCE(e.calibration_factor, 1.0)                               AS calibration_factor,
     CASE r.state_abbr
         WHEN 'PR' THEN 'EAGLE-I reports the 7 PREPA operating regions under the FIPS of each namesake municipio; results are region-level'
@@ -73,7 +73,7 @@ LEFT JOIN eia          AS i ON i.state_abbr = r.state_abbr;
 
 
 -- -----------------------------------------------------------------------------
--- Check: states footnoted (below 70% customer coverage) and the lowest coverage
+-- Check: states footnoted (below the coverage minimum) and the lowest coverage
 -- -----------------------------------------------------------------------------
 
 SELECT state_abbr, eaglei_counties, total_counties, ROUND(customer_coverage, 3) AS customer_coverage, ranking_eligible

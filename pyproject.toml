@@ -15,6 +15,7 @@ dependencies = [
     "pandas>=3.1.1",
     "pyarrow>=26.0.1",
     "python-dotenv>=1.2.4",
+    "pyyaml>=6.0.4",
     "requests>=2.34.2",
     "snowflake-connector-python>=5.2.0",
     "xlrd>=2.0.2",

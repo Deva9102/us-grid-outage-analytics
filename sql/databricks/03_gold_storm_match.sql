@@ -12,8 +12,8 @@
 
 SET TIME ZONE 'UTC';
 
-USE CATALOG workspace;
-USE SCHEMA outages;
+USE CATALOG ${project.catalog};
+USE SCHEMA ${project.schema};
 
 
 CREATE OR REPLACE TABLE gold_event_storm_match
@@ -26,7 +26,8 @@ severity AS (
     FROM bronze_storm_event_severity
     WHERE can_cause_outage = 'Y'
 ),
--- A storm's window opens 12 hours before NOAA's begin time (D37) and closes 1 hour after its end (D42).
+-- A storm's window opens storm_match.window_before_hours before NOAA's begin time (D37) and closes
+-- storm_match.window_after_hours after its end (D42).
 storms AS (
     SELECT
         s.event_id                         AS storm_event_id,
@@ -35,8 +36,8 @@ storms AS (
         s.event_type,
         s.begin_utc,
         s.end_utc,
-        s.begin_utc - INTERVAL 12 HOURS    AS window_start,
-        s.end_utc + INTERVAL 1 HOUR        AS window_end,
+        s.begin_utc - INTERVAL ${storm_match.window_before_hours} HOURS    AS window_start,
+        s.end_utc + INTERVAL ${storm_match.window_after_hours} HOUR        AS window_end,
         v.severity_rank,
         v.severity_tier
     FROM silver_storm_events AS s

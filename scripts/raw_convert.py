@@ -37,9 +37,11 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import xlrd
 
+import pipeline_config
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 RAW = REPO_ROOT / "data" / "raw"
-YEARS = (2022, 2023, 2024)
+YEARS = tuple(pipeline_config.load()["years"]["list"])
 
 # Fixed width per file type, so every year has the same Parquet schema.
 EIA_FILES = {"reliability": ("Reliability", 30), "sales": ("Sales_Ult_Cust", 30),

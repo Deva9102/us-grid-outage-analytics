@@ -15,8 +15,8 @@
 -- parsing and display UTC regardless of workspace defaults.
 SET TIME ZONE 'UTC';
 
-USE CATALOG workspace;
-USE SCHEMA outages;
+USE CATALOG ${project.catalog};
+USE SCHEMA ${project.schema};
 
 
 -- -----------------------------------------------------------------------------
@@ -27,11 +27,11 @@ CREATE OR REPLACE TABLE dim_county_customers (
     fips_code            STRING  NOT NULL COMMENT '5-digit county FIPS',
     customers            BIGINT           COMMENT 'One denominator for all years; NULL if none (has_denominator = false)',
     denominator_source   STRING           COMMENT 'total_customers_2024, max_mcc_2024, mcc, or NULL',
-    denominator_mismatch BOOLEAN NOT NULL COMMENT 'True when MCC and 2024 total_customers differ by more than 2x (D12)',
+    denominator_mismatch BOOLEAN NOT NULL COMMENT 'True when MCC and 2024 total_customers differ by more than ${denominator.mismatch_ratio}x (D12)',
     calibration_factor   DOUBLE  NOT NULL COMMENT 'D13 denominator / final denominator for this county; 1.0 if unchanged (D21, D35)',
-    state_calibration_factor DOUBLE NOT NULL COMMENT 'State D13 total / EIA-861 2024 total where above 1.25, else 1.0 (D21)',
+    state_calibration_factor DOUBLE NOT NULL COMMENT 'State D13 total / EIA-861 ${calibration.eia_year} total where above ${calibration.state_ratio}, else 1.0 (D21)',
     peak_floor_applied   BOOLEAN NOT NULL COMMENT 'True when the county was held at its peak customers out (D35)',
-    peak_floor_skipped   BOOLEAN NOT NULL COMMENT 'True when the peak exceeds 1.25x the D13 denominator, so no floor applies (D36)'
+    peak_floor_skipped   BOOLEAN NOT NULL COMMENT 'True when the peak exceeds ${calibration.peak_skip_ratio}x the D13 denominator, so no floor applies (D36)'
 )
 COMMENT 'Customer denominator per county, decisions D12, D13, D21, D35 and D36';
 
@@ -61,7 +61,7 @@ mcc AS (
     FROM bronze_eaglei_mcc
     WHERE regexp_like(TRIM(County_FIPS), '^[0-9]+$')
 ),
--- A gap above 2x between the two sources is a data error, not growth (D12).
+-- A gap above denominator.mismatch_ratio between the two sources is a data error, not growth (D12).
 compared AS (
     SELECT
         c.fips_code,
@@ -69,7 +69,7 @@ compared AS (
         m.mcc_customers,
         COALESCE(
             GREATEST(t.total_customers_2024, m.mcc_customers)
-                > 2 * LEAST(t.total_customers_2024, m.mcc_customers),
+                > ${denominator.mismatch_ratio} * LEAST(t.total_customers_2024, m.mcc_customers),
             FALSE
         ) AS is_mismatch
     FROM eaglei_counties AS c
@@ -106,31 +106,31 @@ peaks AS (
     ) AS readings
     GROUP BY 1
 ),
--- State totals of the D13 denominators, compared with EIA-861 2024 customers (D21).
+-- State totals of the D13 denominators, compared with EIA-861 customers of calibration.eia_year (D21).
 state_totals AS (
     SELECT r.state_abbr, SUM(d.customers) AS d13_customers
     FROM d13 AS d
     INNER JOIN bronze_state_regions AS r ON r.state_fips = LEFT(d.fips_code, 2)
     GROUP BY r.state_abbr
 ),
--- A state is calibrated only where it exceeds EIA by more than 25%; never scaled up (D21).
+-- A state is calibrated only where it exceeds EIA by more than calibration.state_ratio; never scaled up (D21).
 states AS (
     SELECT
         s.state_abbr,
         e.customers AS eia_customers,
-        CASE WHEN s.d13_customers > 1.25 * e.customers THEN s.d13_customers / e.customers ELSE 1.0 END AS state_calibration_factor
+        CASE WHEN s.d13_customers > ${calibration.state_ratio} * e.customers THEN s.d13_customers / e.customers ELSE 1.0 END AS state_calibration_factor
     FROM state_totals AS s
-    LEFT JOIN silver_eia_state_customers AS e ON e.state_abbr = s.state_abbr AND e.data_year = 2024
+    LEFT JOIN silver_eia_state_customers AS e ON e.state_abbr = s.state_abbr AND e.data_year = ${calibration.eia_year}
 ),
--- The floor is the peak, unless the peak is more than 1.25x the D13 denominator: such a peak is
+-- The floor is the peak, unless the peak is more than calibration.peak_skip_ratio x the D13 denominator: such a peak is
 -- likely misattributed, so that county gets no floor and takes the common rescaling (D36).
 floors AS (
     SELECT
         d.fips_code,
         d.customers AS d13_customers,
-        COALESCE(p.peak_customers_out, 0) > 1.25 * d.customers AS floor_skipped,
+        COALESCE(p.peak_customers_out, 0) > ${calibration.peak_skip_ratio} * d.customers AS floor_skipped,
         CASE
-            WHEN COALESCE(p.peak_customers_out, 0) > 1.25 * d.customers THEN 0
+            WHEN COALESCE(p.peak_customers_out, 0) > ${calibration.peak_skip_ratio} * d.customers THEN 0
             ELSE COALESCE(p.peak_customers_out, 0)
         END AS floor_customers
     FROM d13 AS d

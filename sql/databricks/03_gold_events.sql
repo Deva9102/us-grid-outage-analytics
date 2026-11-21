@@ -8,7 +8,7 @@
 --   gold_outage_events     one row per county outage event (D3, D4, D10, D11, D13, D17-D19)
 --
 -- Event rule: a reading belongs to an event when customers_out >= the county's threshold,
--- GREATEST(100, share x customers) (D18). A gap of more than 1 hour since the county's
+-- GREATEST(${events.min_customers_out}, share x customers) (D18). A gap of more than ${events.max_gap_hours} hour(s) since the county's
 -- previous qualifying reading starts a new event. The gap is measured in collected runs,
 -- excluding nationwide feed gaps (D3) and the county's own feed dropouts (D19), so
 -- neither can split an event.
@@ -19,8 +19,8 @@
 
 SET TIME ZONE 'UTC';
 
-USE CATALOG workspace;
-USE SCHEMA outages;
+USE CATALOG ${project.catalog};
+USE SCHEMA ${project.schema};
 
 
 -- -----------------------------------------------------------------------------
@@ -66,37 +66,37 @@ LEFT JOIN collected AS c ON c.reading_time = g.slot_time;
 -- -----------------------------------------------------------------------------
 
 CREATE OR REPLACE TABLE gold_event_thresholds
-COMMENT 'Event threshold per county: GREATEST(100, event_share x customers) (D18)'
+COMMENT 'Event threshold per county: GREATEST(${events.min_customers_out}, event_share x customers) (D18)'
 AS
 WITH
 -- Share of county customers that sets the threshold in large counties. Chosen by the
--- sensitivity test in scripts/sensitivity_event_threshold.py (D18). This is the only place
--- the share is set.
+-- sensitivity test in scripts/sensitivity_event_threshold.py (D18); set in config/pipeline.yml
+-- (events.threshold_share, D47).
 params AS (
-    SELECT CAST(0.0025 AS DOUBLE) AS event_share
+    SELECT CAST(${events.threshold_share} AS DOUBLE) AS event_share
 )
--- A fixed 100 is background noise in a county with a million customers, so the threshold
--- scales with the D13 denominator. Counties without one stay at 100.
+-- A fixed floor is background noise in a county with a million customers, so the threshold
+-- scales with the D13 denominator. Counties without one stay at the floor.
 SELECT
     k.fips_code,
     k.customers,
     k.denominator_source,
     p.event_share,
-    GREATEST(100, COALESCE(p.event_share * k.customers, 0)) AS event_threshold
+    GREATEST(${events.min_customers_out}, COALESCE(p.event_share * k.customers, 0)) AS event_threshold
 FROM dim_county_customers AS k
 CROSS JOIN params AS p;
 
 
 -- -----------------------------------------------------------------------------
 -- gold_feed_dropouts (D19)
--- A dropout starts at a reported reading that is below 10% of the county's previous
--- reading, where the previous reading was inside an event (at or above the threshold).
--- It ends at the first later reading back at 50% or more of that previous level, if that
--- comes within 5 runs, so the dropped readings span at most 1 hour.
+-- A dropout starts at a reported reading that is below dropouts.drop_below_share of the county's
+-- previous reading, where the previous reading was inside an event (at or above the threshold).
+-- It ends at the first later reading back at dropouts.recovery_share or more of that previous level,
+-- if that comes within dropouts.recovery_max_runs runs (config/pipeline.yml, D47).
 -- -----------------------------------------------------------------------------
 
 CREATE OR REPLACE TABLE gold_feed_dropouts
-COMMENT 'County feed dropouts: a reading below 10% of the previous one that recovers to 50% within 1 hour (D19)'
+COMMENT 'County feed dropouts: a reading below ${dropouts.drop_below_pct}% of the previous one that recovers to ${dropouts.recovery_pct}% within ${dropouts.recovery_max_minutes} minutes (D19)'
 AS
 WITH
 -- Every reading with its collected-run position and its county threshold.
@@ -105,13 +105,14 @@ readings AS (
         s.fips_code,
         s.customers_out,
         r.run_index,
-        COALESCE(t.event_threshold, 100) AS event_threshold
+        COALESCE(t.event_threshold, ${events.min_customers_out}) AS event_threshold
     FROM silver_outages AS s
     INNER JOIN gold_collection_runs AS r ON r.slot_time = s.reading_time
     LEFT JOIN  gold_event_thresholds AS t ON t.fips_code = s.fips_code
 ),
 -- The previous reading and the next five readings of the same county. Recovery must come
--- within 5 runs, and runs are distinct per county, so five LEADs always cover it.
+-- within dropouts.recovery_max_runs (at most 5) runs, and runs are distinct per county, so five
+-- LEADs always cover it.
 neighbours AS (
     SELECT
         *,
@@ -130,33 +131,33 @@ neighbours AS (
     FROM readings
     WINDOW w AS (PARTITION BY fips_code ORDER BY run_index)
 ),
--- A drop is a reported reading in the very next run that falls by more than 90%. Missing
+-- A drop is a reported reading in the very next run below dropouts.drop_below_share. Missing
 -- rows are zeros under D3 and are not treated as drops.
 drops AS (
     SELECT *
     FROM neighbours
     WHERE run_index = prev_run + 1
       AND prev_out >= event_threshold
-      AND customers_out < 0.1 * prev_out
+      AND customers_out < ${dropouts.drop_below_share} * prev_out
 ),
--- The earliest of the next five readings that is back at 50% of the pre-drop level,
--- no more than 5 runs after the drop started.
+-- The earliest of the next five readings that is back at dropouts.recovery_share of the pre-drop
+-- level, no more than dropouts.recovery_max_runs runs after the drop started.
 recovered AS (
     SELECT
         *,
         CASE
-            WHEN run_1 <= run_index + 5 AND out_1 >= 0.5 * prev_out THEN run_1
-            WHEN run_2 <= run_index + 5 AND out_2 >= 0.5 * prev_out THEN run_2
-            WHEN run_3 <= run_index + 5 AND out_3 >= 0.5 * prev_out THEN run_3
-            WHEN run_4 <= run_index + 5 AND out_4 >= 0.5 * prev_out THEN run_4
-            WHEN run_5 <= run_index + 5 AND out_5 >= 0.5 * prev_out THEN run_5
+            WHEN run_1 <= run_index + ${dropouts.recovery_max_runs} AND out_1 >= ${dropouts.recovery_share} * prev_out THEN run_1
+            WHEN run_2 <= run_index + ${dropouts.recovery_max_runs} AND out_2 >= ${dropouts.recovery_share} * prev_out THEN run_2
+            WHEN run_3 <= run_index + ${dropouts.recovery_max_runs} AND out_3 >= ${dropouts.recovery_share} * prev_out THEN run_3
+            WHEN run_4 <= run_index + ${dropouts.recovery_max_runs} AND out_4 >= ${dropouts.recovery_share} * prev_out THEN run_4
+            WHEN run_5 <= run_index + ${dropouts.recovery_max_runs} AND out_5 >= ${dropouts.recovery_share} * prev_out THEN run_5
         END AS recovery_run,
         CASE
-            WHEN run_1 <= run_index + 5 AND out_1 >= 0.5 * prev_out THEN out_1
-            WHEN run_2 <= run_index + 5 AND out_2 >= 0.5 * prev_out THEN out_2
-            WHEN run_3 <= run_index + 5 AND out_3 >= 0.5 * prev_out THEN out_3
-            WHEN run_4 <= run_index + 5 AND out_4 >= 0.5 * prev_out THEN out_4
-            WHEN run_5 <= run_index + 5 AND out_5 >= 0.5 * prev_out THEN out_5
+            WHEN run_1 <= run_index + ${dropouts.recovery_max_runs} AND out_1 >= ${dropouts.recovery_share} * prev_out THEN out_1
+            WHEN run_2 <= run_index + ${dropouts.recovery_max_runs} AND out_2 >= ${dropouts.recovery_share} * prev_out THEN out_2
+            WHEN run_3 <= run_index + ${dropouts.recovery_max_runs} AND out_3 >= ${dropouts.recovery_share} * prev_out THEN out_3
+            WHEN run_4 <= run_index + ${dropouts.recovery_max_runs} AND out_4 >= ${dropouts.recovery_share} * prev_out THEN out_4
+            WHEN run_5 <= run_index + ${dropouts.recovery_max_runs} AND out_5 >= ${dropouts.recovery_share} * prev_out THEN out_5
         END AS recovery_out
     FROM drops
 )
@@ -183,7 +184,7 @@ WHERE d.recovery_run IS NOT NULL;
 -- -----------------------------------------------------------------------------
 
 CREATE OR REPLACE TABLE gold_outage_events
-COMMENT 'County outage events: readings at or above the county threshold, a gap over 1 hour of active runs starts a new event'
+COMMENT 'County outage events: readings at or above the county threshold, a gap over ${events.max_gap_hours} hour(s) of active runs starts a new event'
 AS
 WITH
 -- Each dropout covers its dropped runs, drop_start_run to recovery_run - 1.
@@ -212,11 +213,11 @@ qualifying AS (
         r.run_index,
         t.customers,
         t.denominator_source,
-        COALESCE(t.event_threshold, 100) AS event_threshold
+        COALESCE(t.event_threshold, ${events.min_customers_out}) AS event_threshold
     FROM silver_outages AS s
     INNER JOIN gold_collection_runs AS r ON r.slot_time = s.reading_time
     LEFT JOIN  gold_event_thresholds AS t ON t.fips_code = s.fips_code
-    WHERE s.customers_out >= COALESCE(t.event_threshold, 100)
+    WHERE s.customers_out >= COALESCE(t.event_threshold, ${events.min_customers_out})
       AND NOT EXISTS (
           SELECT 1 FROM dropout_runs AS d
           WHERE d.fips_code = s.fips_code AND d.run_index = r.run_index
@@ -259,14 +260,14 @@ with_previous AS (
         active_index - LAG(active_index) OVER (PARTITION BY fips_code ORDER BY reading_time) AS runs_since_previous
     FROM positioned
 ),
--- A new event starts at the county's first qualifying reading, or when more than 4 active
--- runs (more than 1 hour) have passed since the previous one. Exactly 1 hour stays in the
--- same event.
+-- A new event starts at the county's first qualifying reading, or when more than
+-- events.max_gap_runs active runs (events.max_gap_hours) have passed since the previous one.
+-- A gap of exactly that length stays in the same event.
 flagged AS (
     SELECT
         *,
         CASE
-            WHEN runs_since_previous IS NULL OR runs_since_previous > 4 THEN 1
+            WHEN runs_since_previous IS NULL OR runs_since_previous > ${events.max_gap_runs} THEN 1
             ELSE 0
         END AS is_new_event
     FROM with_previous
@@ -363,7 +364,7 @@ SELECT
     e.customers,
     e.denominator_source,
     e.customers IS NOT NULL                                               AS has_denominator,
-    COALESCE(e.customers >= 1000, FALSE)                                  AS ranking_eligible,
+    COALESCE(e.customers >= ${ranking.min_customers}, FALSE)                                  AS ranking_eligible,
     e.peak_customers_out_capped * 1000.0 / NULLIF(e.customers, 0)         AS peak_out_per_1000,
     e.customer_hours_lost * 1000.0 / NULLIF(e.customers, 0)               AS customer_hours_per_1000,
     YEAR(e.event_start)                                                   AS event_year

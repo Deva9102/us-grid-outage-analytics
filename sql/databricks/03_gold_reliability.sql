@@ -17,8 +17,8 @@
 
 SET TIME ZONE 'UTC';
 
-USE CATALOG workspace;
-USE SCHEMA outages;
+USE CATALOG ${project.catalog};
+USE SCHEMA ${project.schema};
 
 
 CREATE OR REPLACE TABLE gold_unit_reliability
@@ -87,8 +87,8 @@ rated AS (
         COALESCE(cp.capped_customer_hours, 0)                          AS capped_customer_hours,
         COALESCE(cp.capped_customer_hours, 0) / NULLIF(t.customer_hours_lost, 0) AS capped_share,
         t.max_peak_customers_out * 1.0 / NULLIF(c.customers, 0)        AS peak_to_customers,
-        -- Ranked only with a denominator of 1,000+ (D11) in a state covered at 70%+ (D22).
-        c.customers IS NOT NULL AND c.customers >= 1000 AND COALESCE(s.ranking_eligible, FALSE) AS ranking_eligible
+        -- Ranked only with a denominator of ranking.min_customers+ (D11) in a state covered at the coverage minimum (D22).
+        c.customers IS NOT NULL AND c.customers >= ${ranking.min_customers} AND COALESCE(s.ranking_eligible, FALSE) AS ranking_eligible
     FROM counties AS c
     CROSS JOIN years AS y
     LEFT JOIN totals AS t ON t.fips_code = c.fips_code AND t.year = y.year
@@ -118,15 +118,15 @@ reasons AS (
         *,
         CASE
             WHEN customers IS NULL THEN 'no denominator (D9)'
-            WHEN customers < 1000 THEN 'denominator under 1,000 customers (D11)'
-            WHEN NOT ranking_eligible THEN 'state below 70% customer coverage (D22)'
+            WHEN customers < ${ranking.min_customers} THEN 'denominator under ${ranking.min_customers_label} customers (D11)'
+            WHEN NOT ranking_eligible THEN 'state below ${coverage.min_customer_coverage_pct}% customer coverage (D22)'
             WHEN exclusion_reason IS NOT NULL THEN CONCAT('reviewed exclusion (D46): ', exclusion_reason)
-            WHEN capped_share > 0.25 AND peak_to_customers > 3
-                THEN 'over 25% of customer-hours from capped readings and peak above 3x customers (D45)'
+            WHEN capped_share > ${footnotes.capped_share} AND peak_to_customers > ${footnotes.peak_to_customers}
+                THEN 'over ${footnotes.capped_share_pct}% of customer-hours from capped readings and peak above ${footnotes.peak_to_customers_label}x customers (D45)'
         END AS footnote_reason,
         CASE
             WHEN exclusion_reason IS NOT NULL THEN exclusion_evidence
-            WHEN capped_share > 0.25 AND peak_to_customers > 3
+            WHEN capped_share > ${footnotes.capped_share} AND peak_to_customers > ${footnotes.peak_to_customers}
                 THEN CONCAT('capped share ', CAST(ROUND(capped_share * 100, 1) AS STRING),
                             '%, peak ', CAST(ROUND(peak_to_customers, 1) AS STRING), 'x customers')
         END AS footnote_evidence
@@ -292,20 +292,21 @@ CREATE OR REPLACE TABLE gold_utility_reliability
 COMMENT 'EIA-861 SAIDI / SAIFI for IEEE 1366 reporters, ranked within size band and year; 1 = most reliable (D39)'
 AS
 WITH
--- Eversource and National Grid operating companies by EIA utility number (D39).
+-- Eversource and National Grid operating companies by EIA utility number (D39; utilities in config).
 flagged AS (
     SELECT
         u.*,
         CASE
-            WHEN u.utility_number IN ('4176', '54913', '15472') THEN 'Eversource'
-            WHEN u.utility_number IN ('11804', '13206', '13573') THEN 'National Grid'
-            WHEN u.utility_number = '13214' AND u.data_year = 2022 THEN 'National Grid (sold to PPL in May 2022)'
+            WHEN u.utility_number IN (${utilities.eversource_ids_sql}) THEN 'Eversource'
+            WHEN u.utility_number IN (${utilities.national_grid_ids_sql}) THEN 'National Grid'
+            WHEN u.utility_number = '${utilities.national_grid_sold.utility_number}' AND u.data_year = ${utilities.national_grid_sold.year}
+                THEN '${utilities.national_grid_sold.label}'
         END AS parent_company
     FROM silver_utility_reliability AS u
     WHERE u.reporting_standard = 'IEEE 1366'
 ),
 -- EIA rows that copy another utility's full metric set, with a reliability customer count more than
--- 10% off the utility's own Sales count, are source errors: kept, flagged, not ranked (D39).
+-- utilities.source_error_customer_share off the utility's own Sales count, are source errors: kept, flagged, not ranked (D39).
 checked AS (
     SELECT
         *,
@@ -317,7 +318,7 @@ rankable AS (
         *,
         CASE
             WHEN same_values > 1 AND saidi_with_med IS NOT NULL
-                 AND ABS(reliability_customers - customers) > 0.1 * customers
+                 AND ABS(reliability_customers - customers) > ${utilities.source_error_customer_share} * customers
             THEN 'source row repeats the values of another utility'
         END AS data_quality_flag
     FROM checked

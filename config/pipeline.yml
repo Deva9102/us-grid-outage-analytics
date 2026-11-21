@@ -1,0 +1,151 @@
+# Pipeline configuration: every tunable value of the pipeline (D47).
+#
+# SQL files reference values as ${section.key}; scripts/pipeline_config.py loads this file,
+# validates it, adds derived values (listed at the end) and substitutes them before a
+# statement runs on Databricks or in DuckDB. A placeholder without a value stops the run.
+#
+# Changing a value changes the results: record the change in docs/decisions.md and update
+# quality.expected_rows after a verified run.
+
+project:
+  catalog: workspace            # Unity Catalog catalog
+  schema: outages               # only schema the pipeline creates or modifies
+  volume: raw                   # volume holding the raw uploads
+
+# EAGLE-I years loaded. Each year has its own Bronze table in 01_bronze.sql because the
+# column layout differs by year (D2); a year added here also needs its Bronze statement.
+years: [2022, 2023, 2024]
+
+denominator:
+  mismatch_ratio: 2             # D12: MCC and 2024 total_customers differ by more than this factor
+
+calibration:
+  eia_year: 2024                # D21, D22: EIA-861 year the state totals come from
+  state_ratio: 1.25             # D21: calibrate a state when its D13 total exceeds EIA by this factor
+  peak_skip_ratio: 1.25         # D36: no peak floor when the peak exceeds this x the D13 denominator
+  # D35 has no parameter: the floor is the county's peak customers out.
+
+events:
+  threshold_share: 0.0025       # D18: event threshold = GREATEST(min_customers_out, share x customers)
+  min_customers_out: 100        # D17, D18: threshold floor (customers out)
+  max_gap_hours: 1              # D17: a gap longer than this starts a new event (multiple of 0.25)
+  large_outage_customers: 10000 # D18: an outage of this many customers must always qualify,
+                                # so every county threshold must stay below it (quality gate)
+
+dropouts:                       # D19
+  drop_below_share: 0.1         # a reading below this share of the previous one is a drop
+  recovery_share: 0.5           # recovered when back at this share of the pre-drop level
+  recovery_max_runs: 5          # within this many 15-minute runs (1 to 5: the SQL reads 5 LEADs)
+
+coverage:
+  min_customer_coverage: 0.7    # D22: states below this EAGLE-I / EIA customer share are footnoted
+
+ranking:
+  min_customers: 1000           # D11: counties under this denominator are not ranked
+  ranked_jurisdictions: 51      # D43, D44: the 50 states and DC (quality gate)
+
+storm_match:                    # D37, D42
+  window_before_hours: 12       # window opens this many hours before NOAA's begin time
+  window_after_hours: 1         # D42: and closes this many hours after NOAA's end time
+
+oe417_check:                    # D40
+  start_window_hours: 12        # an EAGLE-I event must start within +/- this many hours
+  band_edges: [1000, 10000]     # customers-affected reporting bands: 1-999, 1,000-9,999, 10,000+
+
+footnotes:                      # D45: footnote a county-year when both hold
+  capped_share: 0.25            # share of customer-hours from capped readings above this
+  peak_to_customers: 3          # peak customers out above this x customers
+
+exclusions:                     # D46 entry criteria (scripts/exclusion_evidence.py)
+  min_county_customers_out: 1000   # readings used: county at or above this many out
+  min_readings: 500                # and the neighbour above 0, at least this many readings
+  min_events: 3                    # separate county events with min_readings_per_event each
+  min_readings_per_event: 20
+  max_cv_between_events: 0.25      # coefficient of variation of per-event median ratios
+  min_neighbour_size_ratio: 10     # neighbour has at least this x the county's customers
+
+utilities:                      # D32, D39
+  size_band_edges: [10000, 100000, 500000]   # small < 10,000 <= medium < 100,000 <= large < 500,000 <= very_large
+  source_error_customer_share: 0.1           # D39: repeated metric sets with customers off by more than this share
+  eversource_ids: ['4176', '54913', '15472']
+  national_grid_ids: ['11804', '13206', '13573']
+  national_grid_sold:
+    utility_number: '13214'
+    year: 2022
+    label: 'National Grid (sold to PPL in May 2022)'
+
+export:                         # scripts/export_gold.py: CSVs for Power BI (D49)
+  folder: data/gold_exports
+  max_file_mb: 50                 # a table larger than this is split by its year column
+  tables:
+    - gold_outage_events
+    - gold_event_storm_match
+    - gold_county_reliability
+    - gold_county_ranking_footnotes
+    - gold_state_reliability
+    - gold_territory_reliability
+    - gold_territory_unit_reliability
+    - gold_state_coverage
+    - gold_utility_reliability
+    - gold_utility_reliability_other
+    - gold_oe417_check
+    - dim_county_customers
+
+quality:                        # sql/databricks/90_quality_checks.sql (D48)
+  row_count_tolerance: 0.01           # observed row counts may differ from expected by this share
+  float_tolerance: 0.000001           # slack for shares computed in floating point
+  results_table: gold_quality_results
+  # Row counts of the verified run (DuckDB and Databricks agree). Update only after a reviewed change.
+  expected_rows:
+    bronze_eaglei_2022: 25796465
+    bronze_eaglei_2023: 26101051
+    bronze_eaglei_2024: 27701334
+    bronze_eaglei_mcc: 3234
+    bronze_state_regions: 53
+    bronze_noaa_storm_events: 215282
+    bronze_nws_zone_county: 28391
+    bronze_eia861_reliability: 3042
+    bronze_eia861_sales: 8791
+    bronze_eia861_service_territory: 35616
+    bronze_oe417: 742
+    bronze_noaa_state_codes: 69
+    bronze_oe417_event_types: 43
+    bronze_state_time_zones: 53
+    bronze_storm_event_severity: 54
+    bronze_ranking_exclusions: 0
+    silver_eia_state_customers: 168
+    silver_utility_reliability: 2908
+    silver_nws_zone_versions: 6
+    silver_nws_zone_county: 28209
+    silver_storm_event_details: 215282
+    silver_storm_events: 232414
+    silver_storm_events_unplaced: 8756
+    silver_oe417_rows: 738
+    silver_oe417_locations: 1972
+    silver_oe417: 738
+    dim_county_customers: 3063
+    silver_outages: 79598850
+    gold_collection_runs: 105216
+    gold_event_thresholds: 3063
+    gold_feed_dropouts: 19190
+    gold_outage_events: 446261
+    gold_state_coverage: 53
+    gold_event_storm_match: 446261
+    gold_unit_reliability: 9189
+    gold_county_reliability: 9159
+    gold_territory_unit_reliability: 30
+    gold_county_ranking_footnotes: 135
+    gold_state_reliability: 153
+    gold_territory_reliability: 6
+    gold_utility_reliability: 2204
+    gold_utility_reliability_other: 704
+    gold_oe417_check: 738
+
+# Derived values (computed by scripts/pipeline_config.py, not set here):
+#   project.volume_path            /Volumes/<catalog>/<schema>/<volume>
+#   years.first, years.last, years.list
+#   events.max_gap_runs            max_gap_hours / 0.25 (15-minute runs)
+#   dropouts.*_pct, coverage.min_customer_coverage_pct, footnotes.capped_share_pct   labels for comments
+#   ranking.min_customers_label    1,000-style label
+#   oe417_check.band_*             band edges and labels
+#   utilities.size_band_small/medium/large, utilities.*_ids_sql

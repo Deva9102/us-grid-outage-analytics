@@ -24,6 +24,8 @@ import sys
 import duckdb
 import requests
 
+import pipeline_config
+
 from download_utils import HEADERS, RAW, FetchFailed, ManualFile, Report, fetch, remote_size
 
 BASE = "https://www.ncei.noaa.gov/pub/data/swdi/stormevents/csvfiles/"
@@ -66,7 +68,7 @@ def verify(path, year: int) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--years", type=int, nargs="+", default=[2022, 2023, 2024])
+    parser.add_argument("--years", type=int, nargs="+", default=pipeline_config.load()["years"]["list"])
     args = parser.parse_args()
     report = Report()
 
