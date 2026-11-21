@@ -50,6 +50,8 @@ Row counts come from DuckDB runs against the raw EAGLE-I files
 | D42 | Storm window closes 1 hour after NOAA's end time (resolves Q7) | Gold | 2026-11-21 |
 | D43 | State rankings: 50 states and DC; PR and VI reported separately, unranked (resolves Q8) | Gold | 2026-11-21 |
 | D44 | County rankings: 50 states and DC; PR and VI reporting units reported separately, unranked | Gold | 2026-11-21 |
+| D45 | Footnote county-years with capped share above 25% and peak above 3x customers | Gold | 2026-11-21 |
+| D46 | Reviewed ranking exclusions file and entry criteria; Austin TX 2023 stays ranked | Gold | 2026-11-21 |
 
 ---
 
@@ -1678,6 +1680,96 @@ Only 2022 changes: Mayagüez, Ponce, Caguas, Arecibo and Carolina (PREPA regions
 Charlotte FL, Franklin city VA, Lee FL, Hamilton NY and Alcona MI move up from ranks 6, 7, 8, 10 and
 11 (Bayamón held rank 9). In 2023 and 2024 no territory unit was in the top 5; the highest were St. John
 VI at 17 (2023) and 12 (2024).
+
+## D45. Footnote county-years whose rate rests on capped, implausible readings
+
+**What:** A county-year is footnoted instead of ranked when both hold:
+- more than 25% of its customer-hours come from readings above its customers, which D4 caps
+  (`capped_share`);
+- its peak customers out is more than 3 times its customers (`peak_to_customers`).
+
+`capped_share` is measured over the readings inside each of the county's events at or above the
+event threshold; it matches Gold customer-hours to 0.01%. `gold_county_reliability` gets
+`capped_customer_hours`, `capped_share`, `peak_to_customers`, `footnote_reason`, `footnote_evidence`
+and `rank_without_footnotes`. `ranking_eligible` is now true only when there is no footnote reason.
+Footnoted county-years stay in every raw total (state and territory totals are unchanged) and
+appear in `gold_county_ranking_footnotes` with the rank they would have had.
+`gold_county_ranking_footnotes` also lists the county-years that were already unranked: no
+denominator (D9), under 1,000 customers (D11), or below 70% state coverage (D22; none today).
+
+**Why:** A large capped share can mean either of two things:
+- **Misattribution:** a utility's outage assigned to the wrong county. The peak is then many times
+  the county's customers (Austin TX 2024 at 12.5x, Waller TX 2024 at 6.2x).
+- **Real damage with a small denominator:** the Helene counties of western North Carolina and
+  Georgia have peaks of only 1.3-1.8x their customers.
+
+Capped share alone would footnote the second group (25%: Yancey, Mitchell and Atkinson, the 2024
+top 3). The peak condition limits the rule to the first group.
+
+**Rows affected:** 6 county-years.
+
+| Year | County | Would have ranked | Evidence |
+|---|---|---|---|
+| 2022 | Rich, UT (49033) | 192 | capped share 71.6%, peak 3.7x customers |
+| 2023 | Rich, UT (49033) | 257 | capped share 56.6%, peak 3.9x customers |
+| 2024 | Austin, TX (48015) | 7 | capped share 64.9%, peak 12.5x customers |
+| 2024 | Waller, TX (48473) | 8 | capped share 68.2%, peak 6.2x customers |
+| 2024 | Rich, UT (49033) | 308 | capped share 72.4%, peak 4.0x customers |
+| 2024 | Cochise, AZ (04003) | 2,619 | capped share 34.2%, peak 8.8x customers |
+
+Ranked counties per year: 3,010 before D45 in each year, now 3,009 (2022), 3,009 (2023) and 3,006 (2024). The top 5 of every
+year is unchanged. `gold_county_ranking_footnotes`: 135 rows (123 D11, 6 D9, 6 D45).
+
+## D46. Reviewed ranking exclusions
+
+**What:** `data/reference/ranking_exclusions.csv` (committed) lists county-years excluded from rankings
+after review, with columns `fips_code`, `year`, `county`, `state`, `reason`, `evidence`, `reviewed_on`.
+`gold_county_reliability` reads it (`bronze_ranking_exclusions`). A listed county-year gets
+`footnote_reason` 'reviewed exclusion (D46): <reason>' with its evidence, stays in raw totals and
+appears in the footnote list.
+
+**Entry criteria:** a county-year enters the file only when its large readings track a much larger
+neighbouring county at a stable ratio across several separate events, measured with
+`scripts/exclusion_evidence.py`:
+- the neighbour is adjacent (stated in the evidence; adjacency is not in the data) and has at least
+  10 times the county's customers;
+- at least 500 15-minute readings where the county had 1,000+ customers out and the neighbour more
+  than 0;
+- at least 3 separate EAGLE-I events of the county, each with 20+ such readings;
+- the coefficient of variation of the per-event median ratio (county / neighbour) is at most 0.25.
+
+A fixed share of one large neighbour's outages, repeated across separate events, is how a utility's
+system-wide count split across counties would look. Shared storms produce strong correlation but
+not a stable ratio, so correlation alone is not enough (the Helene counties correlate 0.84-0.97 with
+their neighbours).
+
+**Why:** Some misattribution is visible only as a pattern, not as a single implausible reading, and
+should be decided case by case with evidence, not by a threshold tuned to one county. A committed,
+reviewed file keeps every exclusion visible and reversible.
+
+**Review of Austin TX 2023 (rank 1):** stability measured on readings with Austin at 1,000+ customers
+out:
+
+| Pair | Readings | Events (20+ readings) | Median ratio | CV over readings | CV between events (event medians) |
+|---|---|---|---|---|---|
+| Austin TX 2023 vs Harris (not adjacent) | 969 | 66 (7) | 0.251 | 4.29 | 0.68 (0.14-0.77) |
+| Austin TX 2023 vs Fort Bend (adjacent) | 969 | 66 (7) | 0.790 | 4.71 | 0.63 (0.41-2.08) |
+| Austin TX 2024 vs Harris | 1,164 | 34 (9) | 0.275 | 6.64 | 1.86 |
+| Austin TX 2024 vs Fort Bend | 1,152 | 33 (9) | 3.521 | 7.34 | 2.04 |
+| Waller TX 2024 vs Harris (adjacent) | 1,351 | 54 (8) | 0.224 | 20.01 | 0.56 |
+| Yancey NC 2024 vs Buncombe | 3,255 | 3 (2) | 1.873 | 3.17 | 1.17 |
+| Mitchell NC 2024 vs McDowell | 2,293 | 6 (1) | 1.611 | 7.25 | n/a (1 event) |
+| Madison NC 2024 vs Buncombe | 1,024 | 2 (1) | 0.028 | 2.04 | n/a (1 event) |
+| Atkinson GA 2024 vs Coffee | 1,823 | 12 (2) | 0.443 | 9.59 | 0.67 |
+
+**Outcome: Austin TX 2023 stays ranked (#1).** Its event-to-event CV (0.68 against Harris, 0.63
+against Fort Bend) is far above 0.25, and as high as Atkinson GA's (0.67), whose Helene damage is real.
+Austin's share of Harris's outages ranged from 14% to 77% between events, which is not a fixed
+allocation. Harris is also not adjacent to Austin (Waller lies between). The earlier correlation (0.95)
+comes from shared Houston-area storms. No pair in the table meets the criteria; the misattribution
+cases of 2024 are caught by D45 instead. The file starts with a header only.
+
+**Rows affected:** none today (0 entries).
 
 ---
 
