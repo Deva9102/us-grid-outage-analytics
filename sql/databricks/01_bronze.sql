@@ -6,11 +6,12 @@
 -- bad value can never fail the load or be silently changed by schema inference.
 -- Each table adds source_file and loaded_at.
 --
--- Before running the CREATE TABLE statements, upload these local files to the
--- volume so the paths match:
---   data/raw/eaglei/<year>/eaglei_outages_<year>.csv -> /Volumes/workspace/outages/raw/eaglei/<year>/
---   data/raw/eaglei/metadata/MCC.csv                 -> /Volumes/workspace/outages/raw/eaglei/metadata/
---   data/reference/state_regions.csv                 -> /Volumes/workspace/outages/raw/reference/
+-- The yearly EAGLE-I files are read as Parquet: the raw CSVs converted locally by
+-- DuckDB with every column as STRING, values unchanged (D20). scripts/run_databricks.py
+-- converts and uploads these files so the paths match:
+--   data/raw/eaglei_parquet/<year>/eaglei_outages_<year>.parquet -> /Volumes/workspace/outages/raw/eaglei_parquet/<year>/
+--   data/raw/eaglei/metadata/{MCC,coverage_history,DQI}.csv      -> /Volumes/workspace/outages/raw/eaglei/metadata/
+--   data/reference/state_regions.csv                             -> /Volumes/workspace/outages/raw/reference/
 -- =============================================================================
 
 CREATE SCHEMA IF NOT EXISTS workspace.outages
@@ -35,9 +36,8 @@ SELECT
     _metadata.file_path AS source_file,
     current_timestamp() AS loaded_at
 FROM read_files(
-    '/Volumes/workspace/outages/raw/eaglei/2022/',
-    format => 'csv',
-    header => true,
+    '/Volumes/workspace/outages/raw/eaglei_parquet/2022/',
+    format => 'parquet',
     schema => 'fips_code STRING, county STRING, state STRING, customers_out STRING, run_start_time STRING'
 );
 
@@ -49,9 +49,8 @@ SELECT
     _metadata.file_path AS source_file,
     current_timestamp() AS loaded_at
 FROM read_files(
-    '/Volumes/workspace/outages/raw/eaglei/2023/',
-    format => 'csv',
-    header => true,
+    '/Volumes/workspace/outages/raw/eaglei_parquet/2023/',
+    format => 'parquet',
     schema => 'fips_code STRING, county STRING, state STRING, `sum` STRING, run_start_time STRING'
 );
 
@@ -63,9 +62,8 @@ SELECT
     _metadata.file_path AS source_file,
     current_timestamp() AS loaded_at
 FROM read_files(
-    '/Volumes/workspace/outages/raw/eaglei/2024/',
-    format => 'csv',
-    header => true,
+    '/Volumes/workspace/outages/raw/eaglei_parquet/2024/',
+    format => 'parquet',
     schema => 'fips_code STRING, county STRING, state STRING, customers_out STRING, run_start_time STRING, total_customers STRING'
 );
 
