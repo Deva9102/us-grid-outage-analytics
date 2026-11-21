@@ -12,7 +12,8 @@
 --   data/raw/nws_zone_county/<year>/bp*.dbx             -> raw/nws_zone_county/<year>/
 --   data/raw/eia861_parquet/<year>/*.parquet            -> raw/eia861_parquet/<year>/   (D27)
 --   data/raw/oe417_parquet/<year>/*.parquet             -> raw/oe417_parquet/<year>/    (D27)
---   data/reference/{noaa_state_codes,oe417_event_types,state_time_zones,storm_event_severity}.csv -> raw/reference/
+--   data/reference/{noaa_state_codes,oe417_event_types,state_time_zones,storm_event_severity,ranking_exclusions}.csv
+--       -> raw/reference/
 -- =============================================================================
 
 USE CATALOG workspace;
@@ -153,6 +154,20 @@ FROM read_files(
     schema => 'event_type STRING, severity_rank STRING, severity_tier STRING, can_cause_outage STRING'
 );
 
+CREATE OR REPLACE TABLE bronze_ranking_exclusions
+COMMENT 'Reviewed county-year exclusions from rankings, with evidence (D46)'
+AS
+SELECT
+    *,
+    _metadata.file_path AS source_file,
+    current_timestamp() AS loaded_at
+FROM read_files(
+    '/Volumes/workspace/outages/raw/reference/ranking_exclusions.csv',
+    format => 'csv',
+    header => true,
+    schema => 'fips_code STRING, year STRING, county STRING, state STRING, reason STRING, evidence STRING, reviewed_on STRING'
+);
+
 CREATE OR REPLACE TABLE bronze_state_time_zones
 COMMENT 'Primary IANA time zone per state (D24)'
 AS
@@ -181,4 +196,5 @@ UNION ALL SELECT 'bronze_oe417', COUNT(*) FROM bronze_oe417
 UNION ALL SELECT 'bronze_noaa_state_codes', COUNT(*) FROM bronze_noaa_state_codes
 UNION ALL SELECT 'bronze_oe417_event_types', COUNT(*) FROM bronze_oe417_event_types
 UNION ALL SELECT 'bronze_state_time_zones', COUNT(*) FROM bronze_state_time_zones
-UNION ALL SELECT 'bronze_storm_event_severity', COUNT(*) FROM bronze_storm_event_severity;
+UNION ALL SELECT 'bronze_storm_event_severity', COUNT(*) FROM bronze_storm_event_severity
+UNION ALL SELECT 'bronze_ranking_exclusions', COUNT(*) FROM bronze_ranking_exclusions;

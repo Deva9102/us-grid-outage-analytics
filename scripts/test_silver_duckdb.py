@@ -88,8 +88,9 @@ def bronze_sources(con: duckdb.DuckDBPyConnection) -> None:
     for name, file in (("bronze_noaa_state_codes", "noaa_state_codes.csv"),
                        ("bronze_oe417_event_types", "oe417_event_types.csv"),
                        ("bronze_state_time_zones", "state_time_zones.csv"),
-                       ("bronze_storm_event_severity", "storm_event_severity.csv")):
-        con.execute(f"CREATE OR REPLACE VIEW {name} AS SELECT * FROM read_csv('{(ref / file).as_posix()}', all_varchar = true)")
+                       ("bronze_storm_event_severity", "storm_event_severity.csv"),
+                       ("bronze_ranking_exclusions", "ranking_exclusions.csv")):
+        con.execute(f"CREATE OR REPLACE VIEW {name} AS SELECT * FROM read_csv('{(ref / file).as_posix()}', all_varchar = true, header = true)")
 
 
 D21_SCALING = "CASE WHEN s.d13_customers > 1.25 * e.customers THEN s.d13_customers / e.customers ELSE 1.0 END"
