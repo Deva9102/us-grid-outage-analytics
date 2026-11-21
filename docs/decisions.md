@@ -42,6 +42,10 @@ Row counts come from DuckDB runs against the raw EAGLE-I files
 | D34 | OE-417 county names matched to FIPS once, in Silver | Silver | 2026-11-21 |
 | D35 | Calibrated denominators never below a county's peak customers out (resolves Q4) | Silver | 2026-11-21 |
 | D36 | No peak floor when the peak exceeds 1.25x the uncalibrated denominator (resolves Q5) | Silver | 2026-11-21 |
+| D37 | Outage-to-storm match: same county, storm window overlap, causal types, severity ties (resolves Q3) | Gold | 2026-11-21 |
+| D38 | State and county outage hours per 1,000 customers, ranked with coverage | Gold | 2026-11-21 |
+| D39 | Utility SAIDI/SAIFI ranked within size bands, IEEE 1366 only, parent flags | Gold | 2026-11-21 |
+| D40 | OE-417 incidents checked against EAGLE-I at county level | Gold | 2026-11-21 |
 
 ---
 
@@ -1335,23 +1339,236 @@ state.
   denominator. D36 does not affect them, because only calibrated states have floors; their readings
   are flagged by `exceeds_customers` as before.
 
+## D37. Matching outage events to NOAA storms (resolves Q3)
+
+**What:** `gold_event_storm_match` (`03_gold_storm_match.sql`) gives every outage event one row:
+- **Candidates:** storms in `silver_storm_events` in the same county (`fips_code`) whose window
+  overlaps the outage. A storm's window opens 12 hours before its NOAA begin time and closes at its
+  NOAA end time.
+- **Only outage-causing types are candidates.** `data/reference/storm_event_severity.csv` (built by
+  `scripts/storm_event_severity.py`, committed) lists all 54 NOAA event types. 32 can cause outages
+  and 22 cannot: Drought, Dense Fog, Freezing Fog, Dense Smoke, Frost/Freeze, Funnel Cloud, High
+  Surf, Rip Current, Sneakerwave, Astronomical Low Tide, Dust Devil, Volcanic Ashfall, Waterspout,
+  and the 9 marine types.
+- **Best match = largest overlap in hours.** Ties go to the more severe type, then the lower NOAA
+  event id. Severity order (`severity_rank`, most severe first):
+  1. tropical cyclones (Hurricane, Tropical Storm, Storm Surge/Tide, Tropical Depression);
+  2. Tornado;
+  3. ice and snow (Ice Storm, Blizzard, Winter Storm, Heavy Snow, Lake-Effect Snow, Sleet);
+  4. wind (Thunderstorm Wind, High Wind, Strong Wind, Dust Storm);
+  5. Wildfire;
+  6. flooding (Flash Flood, Flood, Coastal Flood, Lakeshore Flood, Debris Flow, Heavy Rain,
+     Tsunami, Seiche);
+  7. Lightning, Hail;
+  8. temperature (Excessive Heat, Heat, Extreme Cold/Wind Chill, Cold/Wind Chill, Winter Weather);
+  9. Avalanche.
+- **Outputs:** `storm_type` is the best match, or `unmatched`. The table also keeps
+  `most_severe_storm_type` (the most severe overlapping storm), `overlap_hours` and
+  `candidate_storms`.
+
+**Why:**
+- The window has to reach before NOAA's begin time because outages often start before a storm is
+  logged in that county.
+- Overlap with the whole outage, rather than only its start, catches long restorations.
+- Drought (median NOAA duration 720 hours) and similar background conditions would otherwise
+  overlap almost every outage in their county and win on overlap length without causing it.
+- `most_severe_storm_type` is kept because largest overlap can pick a long flood record over a
+  shorter tropical storm record in the same window (Q6).
+
+**Rows affected (DuckDB, all years):** 446,261 events.
+
+| Year | Matched events | Share of events | Share of customer-hours |
+|---|---|---|---|
+| 2022 | 14,566 | 9.7% | 56.2% |
+| 2023 | 15,631 | 10.8% | 63.1% |
+| 2024 | 15,262 | 10.1% | 62.3% |
+
+Most outage events are short, local and unmatched (median 1.5 hours). Matched events carry 61% of
+all customer-hours. By matched type, customer-hours (all years):
+
+| Storm type | Events | Customer-hours (M) |
+|---|---|---|
+| Thunderstorm Wind | 8,812 | 347.9 |
+| Tropical Storm | 922 | 286.3 |
+| Hurricane (Typhoon) | 94 | 275.1 |
+| Flood | 2,466 | 248.7 |
+| High Wind | 3,274 | 177.7 |
+| Flash Flood | 3,258 | 158.8 |
+| Winter Storm | 3,578 | 136.7 |
+| Ice Storm | 456 | 111.1 |
+
+2,556 matched events (631.4 M customer-hours) have a best match that is not their most severe
+overlapping storm.
+
+Top 10 events:
+
+| Rank | County | Start | Storm type (best) | Most severe overlapping |
+|---|---|---|---|---|
+| 1 | Harris TX (Beryl) | 2024-07-08 | unmatched | none |
+| 2 | Mayagüez PR (Fiona) | 2022-09-17 | unmatched | none |
+| 3 | Lee FL (Ian) | 2022-09-28 | Hurricane (Typhoon) | Hurricane (Typhoon) |
+| 4 | Ponce PR (Fiona) | 2022-09-18 | Debris Flow | Flash Flood |
+| 5 | Caguas PR (Fiona) | 2022-09-18 | Flash Flood | Flash Flood |
+| 6 | Arecibo PR (Fiona) | 2022-09-17 | unmatched | none |
+| 7 | Pinellas FL (Milton) | 2024-10-09 | Hurricane (Typhoon) | Hurricane (Typhoon) |
+| 8 | Greenville SC (Helene) | 2024-09-27 | Flood | Tropical Storm |
+| 9 | Spartanburg SC (Helene) | 2024-09-27 | Flood | Tropical Storm |
+| 10 | Buncombe NC (Helene) | 2024-09-27 | Flood | Tropical Storm |
+
+**Q3 breakdown.** The top 100 events by customer-hours matched NOAA 61% of the time under the profile
+rule (any NOAA event active from 24 hours before to 2 hours after the outage start). Under D37 they
+match **83%**. The 17 that remain:
+
+| Cause | Events | Change made |
+|---|---|---|
+| Time window | 9 | **Changed:** the D37 window covers the whole outage and opens 12 h before the storm; this is what moved the rate from 61% to 83%. Left as specified: 3 events start 0.3-0.4 h after a NOAA report ends (Douglas NE, Wayne MI, Lake OH), and 6 more are 14-42 h after a storm or within days of one. An end allowance would catch the first 3 (Q7). |
+| Coverage | 5 | **Left:** NOAA's file has no storm record at all for Harris, Montgomery, Fort Bend, Brazoria or Galveston during Beryl (2024-07-08, 192.5 M customer-hours together). Beryl is recorded only in neighboring offices' counties. A match cannot create missing records; findings will say that Beryl is unmatched because of a NOAA gap. |
+| Geography | 3 | **Left:** Mayagüez and Arecibo are PREPA regions (D22). NOAA logs Fiona in other municipios of those regions, and our sources have no municipio-to-region list to bridge them. NOAA also has no hurricane-type record for Fiona in Puerto Rico, only Flash Flood, Flood, Debris Flow and Thunderstorm Wind. The third, San Juan on 2024-12-31, is most likely the island-wide blackout of that date, not a storm; it cannot be confirmed because OE-417 2024 is missing (D25). |
+| Labels | 0 | **Changed:** non-causal types are excluded; this did not change the top-100 rate (83 either way). The overlap-versus-severity choice is left as specified, with `most_severe_storm_type` kept alongside (Q6). |
+
+## D38. State and county reliability
+
+**What:** `gold_county_reliability` and `gold_state_reliability` (`03_gold_reliability.sql`):
+- **Metric:** `outage_hours_per_1000_customers` = customer-hours lost (capped by the denominator,
+  D4) x 1,000 / customers, using the calibrated one-per-county denominator (D13, D21, D35, D36).
+- **Year:** an event counts in the year it starts.
+- **Counties:** every county with EAGLE-I data appears in every year; a year without events counts
+  as 0.
+- **States:** the numerator uses only counties with a denominator (D9); `customer_hours_lost`
+  keeps the raw total.
+- **Ranking:** `RANK()`, where 1 = most outage hours per 1,000 customers and ties share a rank.
+  Counties are ranked nationally and within their state, and only when their denominator is at
+  least 1,000 (D11) and their state is ranking-eligible (D22). States are ranked nationally and
+  within their Census region, and only when ranking-eligible (D22).
+- **State output:** each state row carries D22 coverage (`eaglei_counties`, `total_counties`,
+  `customer_coverage`).
+- **Territories:** Puerto Rico rows say they are the 7 PREPA operating regions, not municipios;
+  Virgin Islands rows say they are by island. PR and VI are ranked with the states (Census region
+  'Territory').
+
+**Why:** Per-1,000 rates make places of different size comparable (project rule). One denominator per
+county keeps year-to-year changes about outages (D13). RANK keeps ties honest.
+
+**Rows affected:** 9,189 county-year rows (3,063 counties x 3 years); 3,020 ranked per year (2 have no
+denominator, 41 are under 1,000). 159 state-year rows (53 x 3), all ranking-eligible.
+
+| Year | #1 | #2 | #3 | Highest of the 50 states and DC |
+|---|---|---|---|---|
+| 2022 | PR (186,176 h per 1,000) | VI (42,494) | ME (19,716) | Maine |
+| 2023 | VI (39,899) | ME (35,355) | PR (29,135) | Maine |
+| 2024 | VI (118,383) | PR (74,642) | SC (46,619) | South Carolina |
+
+County #1: 2022 Mayagüez PR (the PREPA region), 2023 Austin TX, 2024 Yancey NC (Helene).
+Territories top the state ranking every year (Q8).
+
+## D39. Utility reliability rankings
+
+**What:** `gold_utility_reliability` ranks EIA-861 utilities that report under IEEE 1366; utilities
+reporting under another standard go to `gold_utility_reliability_other` (704 rows), listed and not
+ranked (D23).
+- **Ranks:** SAIDI and SAIFI, with and without major event days, each ranked with `RANK()` within
+  data year and size band (D32). 1 = lowest value = most reliable. `rank_saidi_without_med` is the
+  primary comparison, since major event days are what the storm analysis covers separately.
+- **Not ranked:** rows in the `unknown` size band (no Sales customers; 3 per year), and rows with a
+  NULL metric for that particular rank.
+- **Flags:** `parent_company` and `is_eversource_or_national_grid`, by EIA utility number:
+  - Eversource: Connecticut Light & Power (4176), NSTAR Electric (54913), Public Service Co of NH
+    (15472).
+  - National Grid: Massachusetts Electric (11804), Nantucket Electric (13206), Niagara Mohawk
+    (13573).
+  - Narragansett Electric (13214) is flagged only for 2022, as 'National Grid (sold to PPL in May
+    2022)'. The sale date is public record; verify it before publishing.
+- **Source-error check:** a row that repeats another utility's full metric set in the same year, and
+  whose reliability customer count is more than 10% off its own Sales customers, is kept with a
+  `data_quality_flag` and not ranked.
+
+**Why:** IEEE and other-standard values are not comparable (D23). Size bands compare like with like
+(analysis question 5). The source-error check catches one EIA error: in EIA-861 2023, NSTAR's row
+repeats Connecticut Light & Power's values exactly, including CL&P's customer count (1,307,124 against
+NSTAR's own 1,515,653 Sales customers). It is the only such duplicate in the three years.
+
+**Rows affected:** 2,204 IEEE rows; 1 flagged (NSTAR 2023). Ranks within the very-large band, SAIDI
+without MED (and with MED):
+
+| Company | 2022 (of 62) | 2023 (of 64) | 2024 (of 62) |
+|---|---|---|---|
+| NSTAR Electric (Eversource) | 12 (31) | flagged | 11 (6) |
+| Connecticut Light & Power (Eversource) | 14 (30) | 15 (29) | 16 (19) |
+| Public Service Co of NH (Eversource) | 17 (52) | 20 (54) | 19 (49) |
+| Massachusetts Electric (National Grid) | 29 (17) | 28 (41) | 25 (15) |
+| Niagara Mohawk (National Grid) | 45 (44) | 43 (33) | 43 (44) |
+| Narragansett Electric (National Grid until May 2022) | 9 (7) | - | - |
+
+Nantucket Electric is in the medium band: 219 of 474 (2022), 95 of 484 (2023), 113 of 496 (2024).
+
+## D40. OE-417 check against EAGLE-I
+
+**What:** `gold_oe417_check` (`03_gold_oe417_check.sql`), one row per OE-417 incident:
+- **Match:** an incident matches when an EAGLE-I event in one of its matched counties (D34) starts
+  within +/-12 hours of the incident's UTC begin time (D24).
+- **Statuses:** `matched` or `not matched`; `no county` (no county matched, so no county-level check
+  is possible); `no time` (no begin date or no state).
+- **Bands:** `customers_band` groups the reported customers: 0, 1-999, 1,000-9,999, 10,000+, unknown.
+- **Detail:** the closest event (by start time) and the summed county peaks are kept for comparison.
+
+**Why:** OE-417 is a utility's own report of an incident. Agreement with EAGLE-I shows how far each
+source can be trusted. State-only incidents are not checked: any large state has an EAGLE-I event
+almost every day (`docs/data_profile_sources.md`), so a state-level match would mean nothing.
+
+**Rows affected:** 738 incidents: 180 matched, 303 not matched, 185 no county, 70 no time.
+
+| Customers affected | Checkable | Matched | Agreement |
+|---|---|---|---|
+| 10,000+ | 75 | 62 | 82.7% |
+| 1,000-9,999 | 28 | 21 | 75.0% |
+| 1-999 | 11 | 5 | 45.5% |
+| 0 | 331 | 76 | 23.0% |
+| unknown | 38 | 16 | 42.1% |
+
+| Category | Checkable | Matched | Agreement |
+|---|---|---|---|
+| weather | 77 | 61 | 79.2% |
+| equipment_failure | 5 | 4 | 80.0% |
+| system_operations | 72 | 35 | 48.6% |
+| cyber | 11 | 4 | 36.4% |
+| transmission_interruption | 28 | 8 | 28.6% |
+| physical_attack | 43 | 12 | 27.9% |
+| vandalism_theft | 128 | 35 | 27.3% |
+| suspicious_activity | 98 | 18 | 18.4% |
+
+Incidents with customer impact agree well (75-83% at 1,000+); incidents with no customers out (most
+vandalism and suspicious activity) rarely appear in EAGLE-I, as expected. For the 83 matched incidents
+with 1,000+ customers, EAGLE-I's summed county peak is a median 0.86 of the OE-417 count, and the
+closest event starts a median 0.1 hours from the OE-417 time, which supports D24's local-time reading.
+
 ---
 
 ## Open questions
 
 Q1 is resolved in D9; Q2 (fixed 100-customer threshold) is resolved in D18 and D19.
 
-**Q3. Why only 62% of the top 100 EAGLE-I events match a NOAA event (for Prompt 8c).** In the
-source profile, 74% of the top 1,000 EAGLE-I events by customer-hours have a NOAA event in the same
-county between 24 hours before and 2 hours after the outage starts, but only 62% of the top 100.
-To break down before the storm match is built:
-- Coverage and geography: the Puerto Rico regions (D22) are matched by the namesake municipio only,
-  while NOAA reports Fiona by zone or by other municipios in the region.
-- Time windows: long hurricane events can start before NOAA's begin time in that county, or NOAA's
-  zone records can begin later than the first outages.
-- Event type labels: hurricane impacts are often recorded as Tropical Storm, Storm Surge/Tide,
-  High Wind or Flash Flood, in zones rather than counties.
+**Q3.** Resolved in D37: 61% to 83% of the top 100 now match; the rest are explained by cause.
 
 **Q4.** Resolved in D35 (option B; option C rejected).
 
 **Q5.** Resolved in D36 (option B; options A and C rejected).
+
+**Q6. Best storm match: largest overlap or most severe?** D37 follows the specified rule (largest overlap,
+severity breaks ties). For 2,556 matched events (631.4 M customer-hours), a more severe storm also
+overlaps. Helene's Greenville, Spartanburg and Buncombe events are labeled Flood although a Tropical
+Storm record overlaps each. Options:
+- A. Keep the rule, and report causes from `most_severe_storm_type` where it differs.
+- B. Pick the most severe overlapping storm first, and use overlap only to break ties.
+
+**Q7. Storm window end allowance.** Instantaneous NOAA reports (a wind gust at 23:00) end before an
+outage that crosses its threshold 15-30 minutes later, so they never overlap it. Extending the window
+1 hour past the NOAA end would match 10,144 more events (45,459 to 55,603). The customer-hours share
+would rise from 60.7% to 64.9%, and the top-100 match from 83 to 86. 3 hours adds little beyond 1
+hour (58,938 events, 65.2%).
+
+**Q8. Territories in state rankings.** Puerto Rico and the Virgin Islands rank #1 every year (PR 186,176
+hours per 1,000 customers in 2022). They are ranked with the states as Census region 'Territory'.
+Options:
+- A. Keep them ranked with the states.
+- B. Rank the 50 states and DC only, and report PR and VI alongside, unranked.
+
