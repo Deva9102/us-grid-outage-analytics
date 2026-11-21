@@ -1,0 +1,55 @@
+event_type,severity_rank,severity_tier,can_cause_outage
+Hurricane (Typhoon),1,tropical_cyclone,Y
+Tropical Storm,2,tropical_cyclone,Y
+Storm Surge/Tide,3,tropical_cyclone,Y
+Tropical Depression,4,tropical_cyclone,Y
+Tornado,5,tornado,Y
+Ice Storm,6,ice_snow,Y
+Blizzard,7,ice_snow,Y
+Winter Storm,8,ice_snow,Y
+Heavy Snow,9,ice_snow,Y
+Lake-Effect Snow,10,ice_snow,Y
+Sleet,11,ice_snow,Y
+Thunderstorm Wind,12,wind,Y
+High Wind,13,wind,Y
+Strong Wind,14,wind,Y
+Dust Storm,15,wind,Y
+Wildfire,16,wildfire,Y
+Flash Flood,17,flood,Y
+Flood,18,flood,Y
+Coastal Flood,19,flood,Y
+Lakeshore Flood,20,flood,Y
+Debris Flow,21,flood,Y
+Heavy Rain,22,flood,Y
+Tsunami,23,flood,Y
+Seiche,24,flood,Y
+Lightning,25,lightning_hail,Y
+Hail,26,lightning_hail,Y
+Excessive Heat,27,temperature,Y
+Heat,28,temperature,Y
+Extreme Cold/Wind Chill,29,temperature,Y
+Cold/Wind Chill,30,temperature,Y
+Winter Weather,31,temperature,Y
+Avalanche,32,other,Y
+Drought,101,not_causal,N
+Dense Fog,102,not_causal,N
+Freezing Fog,103,not_causal,N
+Dense Smoke,104,not_causal,N
+Frost/Freeze,105,not_causal,N
+Funnel Cloud,106,not_causal,N
+High Surf,107,not_causal,N
+Rip Current,108,not_causal,N
+Sneakerwave,109,not_causal,N
+Astronomical Low Tide,110,not_causal,N
+Dust Devil,111,not_causal,N
+Volcanic Ashfall,112,not_causal,N
+Waterspout,113,not_causal,N
+Marine Dense Fog,114,not_causal,N
+Marine Hail,115,not_causal,N
+Marine High Wind,116,not_causal,N
+Marine Hurricane/Typhoon,117,not_causal,N
+Marine Lightning,118,not_causal,N
+Marine Strong Wind,119,not_causal,N
+Marine Thunderstorm Wind,120,not_causal,N
+Marine Tropical Depression,121,not_causal,N
+Marine Tropical Storm,122,not_causal,N

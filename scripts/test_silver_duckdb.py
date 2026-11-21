@@ -87,7 +87,8 @@ def bronze_sources(con: duckdb.DuckDBPyConnection) -> None:
         """)
     for name, file in (("bronze_noaa_state_codes", "noaa_state_codes.csv"),
                        ("bronze_oe417_event_types", "oe417_event_types.csv"),
-                       ("bronze_state_time_zones", "state_time_zones.csv")):
+                       ("bronze_state_time_zones", "state_time_zones.csv"),
+                       ("bronze_storm_event_severity", "storm_event_severity.csv")):
         con.execute(f"CREATE OR REPLACE VIEW {name} AS SELECT * FROM read_csv('{(ref / file).as_posix()}', all_varchar = true)")
 
 
