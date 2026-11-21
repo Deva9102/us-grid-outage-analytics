@@ -196,7 +196,10 @@ READINGS_SQL = """
 
 
 def iterate_floors(con) -> dict[str, int]:
-    """The D35 rule as a literal loop: floor every county below its peak, rescale the rest, repeat."""
+    """The D35/D36 rule as a literal loop: floor every county below its peak, rescale the rest, repeat.
+
+    D36: a peak above 1.25x the D13 denominator gives no floor.
+    """
     rows = con.execute(f"""
         SELECT r.state_abbr, u.fips_code, u.customers AS d13, COALESCE(p.peak, 0) AS peak, e.customers AS eia
         FROM dim_d13 u
@@ -208,7 +211,8 @@ def iterate_floors(con) -> dict[str, int]:
     """).fetchall()
     states: dict[str, list] = {}
     for st, f, d, pk, eia in rows:
-        states.setdefault(st, []).append((f, d, pk, eia))
+        floor = 0 if pk > 1.25 * d else pk  # D36
+        states.setdefault(st, []).append((f, d, floor, eia))
     out, rounds = {}, {}
     for st, counties in states.items():
         eia = counties[0][3]
@@ -272,6 +276,16 @@ def calibration_effect(con) -> None:
         FROM ({READINGS_SQL}) x JOIN floor_peaks p USING (fips_code)
         WHERE x.customers_out >= 0.5 * p.peak GROUP BY 1
     """)
+    print("\nCounties whose peak is above 1.25x the D13 denominator, so no floor applies (D36):")
+    show(con, """
+        SELECT c.fips_code, r.state_abbr AS st, u.customers AS d13, m.customers AS d21_only, c.customers AS d36,
+               c.customers < 1000 AS below_d11_cutoff
+        FROM dim_d35 c JOIN dim_d13 u USING (fips_code) JOIN dim_d21 m USING (fips_code)
+        JOIN bronze_state_regions r ON r.state_fips = LEFT(c.fips_code, 2)
+        WHERE c.peak_floor_skipped ORDER BY 1
+    """)
+    check("D36 skips the floor only for Harding SD (46063)", con.execute(
+        "SELECT fips_code FROM dim_d35 WHERE peak_floor_skipped").fetchall() == [("46063",)])
     print("\nCounties held at their peak (D35):")
     show(con, """
         SELECT c.fips_code, n.county, r.state_abbr AS st, u.customers AS d13, m.customers AS d21_only, c.customers AS d35,
