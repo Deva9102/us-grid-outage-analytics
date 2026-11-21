@@ -92,7 +92,8 @@ EXPECTED_COUNTS = {
     "bronze_storm_event_severity": 54,
     "gold_event_storm_match": 446_261,
     "gold_county_reliability": 9_189,
-    "gold_state_reliability": 159,
+    "gold_state_reliability": 153,
+    "gold_territory_reliability": 6,
     "gold_utility_reliability": 2_204,
     "gold_utility_reliability_other": 704,
     "gold_oe417_check": 738,
@@ -124,11 +125,12 @@ EXPECTED_DETAIL = {
     "reliability rows by standard (D32)": [("IEEE 1366", "2204"), ("other", "704")],
     "OE-417 incidents per year (D33)": [("2022", "390"), ("2023", "348")],
     "states below 70% coverage (D22)": [("0",)],
-    "storm-matched events per year (D37)": [("2022", "14566"), ("2023", "15631"), ("2024", "15262")],
-    "rank 1 state per year (D38)": [("2022", "PR"), ("2023", "VI"), ("2024", "VI")],
+    "storm-matched events per year (D37, D42)": [("2022", "17823"), ("2023", "19332"), ("2024", "18448")],
+    "rank 1 state per year (D38, D43)": [("2022", "ME"), ("2023", "ME"), ("2024", "SC")],
     "ranked counties per year (D38)": [("2022", "3020"), ("2023", "3020"), ("2024", "3020")],
     "utility rows flagged as source errors (D39)": [("2023", "54913")],
     "OE-417 check status (D40)": [("matched", "180"), ("no county", "185"), ("no time", "70"), ("not matched", "303")],
+    "Helene top-10 attribution (D41)": [("37021", "Tropical Storm"), ("45045", "Tropical Storm"), ("45083", "Tropical Storm")],
 }
 DETAIL_SQL = {
     "feed gaps per year (D3)":
@@ -159,10 +161,10 @@ DETAIL_SQL = {
         "SELECT CAST(report_year AS STRING), CAST(COUNT(*) AS STRING) FROM silver_oe417 GROUP BY 1 ORDER BY 1",
     "states below 70% coverage (D22)":
         "SELECT CAST(COUNT_IF(NOT ranking_eligible) AS STRING) FROM gold_state_coverage",
-    "storm-matched events per year (D37)":
+    "storm-matched events per year (D37, D42)":
         "SELECT CAST(event_year AS STRING), CAST(COUNT_IF(storm_type <> 'unmatched') AS STRING) "
         "FROM gold_event_storm_match GROUP BY 1 ORDER BY 1",
-    "rank 1 state per year (D38)":
+    "rank 1 state per year (D38, D43)":
         "SELECT CAST(year AS STRING), state_abbr FROM gold_state_reliability WHERE national_rank = 1 ORDER BY 1",
     "ranked counties per year (D38)":
         "SELECT CAST(year AS STRING), CAST(COUNT_IF(ranking_eligible) AS STRING) FROM gold_county_reliability GROUP BY 1 ORDER BY 1",
@@ -170,6 +172,9 @@ DETAIL_SQL = {
         "SELECT CAST(data_year AS STRING), utility_number FROM gold_utility_reliability WHERE data_quality_flag IS NOT NULL ORDER BY 1",
     "OE-417 check status (D40)":
         "SELECT match_status, CAST(COUNT(*) AS STRING) FROM gold_oe417_check GROUP BY 1 ORDER BY 1",
+    "Helene top-10 attribution (D41)":
+        "SELECT fips_code, storm_type FROM (SELECT * FROM gold_event_storm_match ORDER BY customer_hours_lost DESC LIMIT 10) "
+        "WHERE fips_code IN ('45045', '45083', '37021') ORDER BY fips_code",
 }
 
 FORBIDDEN = re.compile(r"\b(DROP|ALTER|TRUNCATE|DELETE|GRANT|REVOKE)\b", re.I)

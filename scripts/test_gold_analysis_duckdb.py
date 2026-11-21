@@ -83,11 +83,28 @@ def report_storm_match(con) -> None:
                         COUNT_IF(storm_type <> 'unmatched' AND storm_type <> most_severe_storm_type) AS best_is_not_most_severe,
                         ROUND(SUM(CASE WHEN storm_type <> most_severe_storm_type THEN customer_hours_lost END) / 1e6, 1) AS their_customer_hours_m
                  FROM gold_event_storm_match""")
+    print("\nAttribution rule (D41):")
+    show(con, """SELECT COALESCE(attribution_rule, 'unmatched') AS rule, COUNT(*) AS events,
+                        ROUND(SUM(customer_hours_lost) / 1e6, 1) AS customer_hours_m
+                 FROM gold_event_storm_match GROUP BY 1 ORDER BY 2 DESC""")
+    (_, query), = sql_dialect.table_statements(SQL / "03_gold_storm_match.sql")
+    line = "s.end_utc + INTERVAL 1 HOUR        AS window_end"
+    con.execute("CREATE OR REPLACE TABLE storm_match_no_d42 AS " + query.replace(line, "s.end_utc AS window_end"))
+    print("\nD42 effect (window closes at NOAA end vs 1 hour later):")
+    show(con, """SELECT a.event_year, COUNT_IF(b.storm_type <> 'unmatched') AS without_d42, COUNT_IF(a.storm_type <> 'unmatched') AS with_d42,
+                        COUNT_IF(a.storm_type <> 'unmatched') - COUNT_IF(b.storm_type <> 'unmatched') AS added
+                 FROM gold_event_storm_match a JOIN storm_match_no_d42 b USING (event_id) GROUP BY 1 ORDER BY 1""")
+    for name in ("storm_match_no_d42", "gold_event_storm_match"):
+        print(f"  top-100 matched ({name}):",
+              one(con, f"SELECT COUNT_IF(storm_type <> 'unmatched') FROM (SELECT * FROM {name} ORDER BY customer_hours_lost DESC LIMIT 100)"))
     print("\nTop 10 events and their match:")
     show(con, """SELECT ROW_NUMBER() OVER (ORDER BY customer_hours_lost DESC) AS rk, event_id, county, state_abbr AS st,
                         strftime(event_start, '%Y-%m-%d') AS start_utc, ROUND(customer_hours_lost / 1e6, 1) AS ch_m,
                         storm_type, most_severe_storm_type, ROUND(overlap_hours) AS overlap_h, candidate_storms
                  FROM gold_event_storm_match ORDER BY customer_hours_lost DESC LIMIT 10""")
+    check("Helene top-10 events attributed to Tropical Storm, not Flood (D41)", con.execute(
+        """SELECT storm_type FROM (SELECT * FROM gold_event_storm_match ORDER BY customer_hours_lost DESC LIMIT 10)
+           WHERE fips_code IN ('45045', '45083', '37021') ORDER BY fips_code""").fetchall() == [("Tropical Storm",)] * 3)
     check("one storm-match row per outage event", one(con, "SELECT COUNT(*) FROM gold_event_storm_match") == one(con, "SELECT COUNT(*) FROM gold_outage_events")
           and one(con, "SELECT COUNT(*) - COUNT(DISTINCT event_id) FROM gold_event_storm_match") == 0)
     check("no non-causal storm type is ever matched", one(con, """SELECT COUNT(*) FROM gold_event_storm_match m
@@ -107,7 +124,7 @@ def report_q3(con) -> None:
     new = one(con, "SELECT COUNT(*) FROM top100 WHERE storm_type <> 'unmatched'")
     print(f"  profile rule (any NOAA event active 24 h before to 2 h after the start): {old} of 100")
     print(f"  D37 window, any type:                                                  {any_type} of 100")
-    print(f"  D37 window, outage-causing types only (gold_event_storm_match):        {new} of 100")
+    print(f"  D37/D42 window, outage-causing types only (gold_event_storm_match):    {new} of 100")
     print("\nUnmatched top-100 events by cause:")
     show(con, """
         WITH um AS (SELECT * FROM top100 WHERE storm_type = 'unmatched'),
@@ -138,10 +155,19 @@ def report_q3(con) -> None:
 
 
 def report_reliability(con) -> None:
-    print("\n=== State reliability (D38) ===")
+    print("\n=== State reliability (D38, D43: 50 states and DC) ===")
     show(con, """SELECT year, national_rank AS rk, state_abbr AS st, ROUND(outage_hours_per_1000_customers) AS hours_per_1000,
-                        ROUND(customer_hours_lost / 1e6, 1) AS ch_m, ROUND(customer_coverage, 3) AS coverage, geography_note
-                 FROM gold_state_reliability WHERE national_rank <= 5 OR state_abbr = 'PR' ORDER BY year, rk NULLS LAST""")
+                        ROUND(customer_hours_lost / 1e6, 1) AS ch_m, ROUND(customer_coverage, 3) AS coverage
+                 FROM gold_state_reliability WHERE national_rank <= 5 ORDER BY year, rk""")
+    print("\nTerritories (D43, unranked):")
+    show(con, """SELECT year, state_abbr AS st, ROUND(outage_hours_per_1000_customers) AS hours_per_1000,
+                        ROUND(customer_hours_lost / 1e6, 1) AS ch_m, reporting_units, geography_note
+                 FROM gold_territory_reliability ORDER BY st, year""")
+    check("state ranking holds the 50 states and DC only (153 rows)",
+          one(con, "SELECT COUNT(*) FROM gold_state_reliability") == 153
+          and one(con, "SELECT COUNT(*) FROM gold_state_reliability WHERE state_abbr IN ('PR', 'VI')") == 0)
+    check("territories table holds PR and VI for 3 years", con.execute(
+        "SELECT state_abbr, COUNT(*) FROM gold_territory_reliability GROUP BY 1 ORDER BY 1").fetchall() == [("PR", 3), ("VI", 3)])
     print("\nPer region, 2024 (region rank 1):")
     show(con, """SELECT year, census_region, state_abbr AS st, ROUND(outage_hours_per_1000_customers) AS hours_per_1000
                  FROM gold_state_reliability WHERE region_rank = 1 ORDER BY year, census_region""")
@@ -203,6 +229,7 @@ def expected(con) -> None:
     show(con, """SELECT 'gold_event_storm_match' t, COUNT(*) n FROM gold_event_storm_match
                  UNION ALL SELECT 'gold_county_reliability', COUNT(*) FROM gold_county_reliability
                  UNION ALL SELECT 'gold_state_reliability', COUNT(*) FROM gold_state_reliability
+                 UNION ALL SELECT 'gold_territory_reliability', COUNT(*) FROM gold_territory_reliability
                  UNION ALL SELECT 'gold_utility_reliability', COUNT(*) FROM gold_utility_reliability
                  UNION ALL SELECT 'gold_utility_reliability_other', COUNT(*) FROM gold_utility_reliability_other
                  UNION ALL SELECT 'gold_oe417_check', COUNT(*) FROM gold_oe417_check""")
