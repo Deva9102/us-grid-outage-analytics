@@ -1,0 +1,20 @@
+[project]
+name = "us-grid-outage-analytics"
+version = "0.1.0"
+description = "US power outages and storm impact analytics pipeline"
+readme = "README.md"
+authors = [
+    { name = "Deva9102" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "databricks-sdk>=0.169.0",
+    "databricks-sql-connector>=4.9.0",
+    "duckdb>=2.0.1",
+    "openpyxl>=3.1.5",
+    "pandas>=3.1.1",
+    "pyarrow>=26.0.1",
+    "python-dotenv>=1.2.4",
+    "requests>=2.34.2",
+    "snowflake-connector-python>=5.2.0",
+]
