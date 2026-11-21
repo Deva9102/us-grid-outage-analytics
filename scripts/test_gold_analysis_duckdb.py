@@ -188,6 +188,20 @@ def report_reliability(con) -> None:
     show(con, """SELECT year, COUNT(*) AS counties, COUNT_IF(ranking_eligible) AS ranked,
                         COUNT_IF(customers IS NULL) AS no_denominator, COUNT_IF(customers < 1000) AS under_1000
                  FROM gold_county_reliability GROUP BY 1 ORDER BY 1""")
+    print("\nCounty ranking footnotes (D45, D46; plus D9 and D11):")
+    show(con, "SELECT footnote_reason, COUNT(*) AS county_years FROM gold_county_ranking_footnotes GROUP BY 1 ORDER BY 2 DESC")
+    show(con, """SELECT year, would_have_rank, county, state_abbr AS st, ROUND(outage_hours_per_1000_customers) AS hours_per_1000,
+                        footnote_evidence FROM gold_county_ranking_footnotes
+                 WHERE footnote_reason NOT LIKE '%D11%' AND footnote_reason NOT LIKE '%D9%' ORDER BY year, would_have_rank""")
+    check("D45 footnotes Austin TX and Waller TX 2024 (ranks 7 and 8 without footnotes)", con.execute(
+        """SELECT fips_code, would_have_rank FROM gold_county_ranking_footnotes
+           WHERE year = 2024 AND footnote_reason LIKE '%D45%' AND fips_code IN ('48015', '48473') ORDER BY 1""").fetchall()
+          == [("48015", 7), ("48473", 8)])
+    check("D46 exclusions file is empty, so no reviewed exclusions apply",
+          one(con, "SELECT COUNT(*) FROM gold_county_ranking_footnotes WHERE footnote_reason LIKE '%D46%'") == 0)
+    check("Austin TX 2023 stays ranked #1", one(con, "SELECT national_rank FROM gold_county_reliability WHERE fips_code = '48015' AND year = 2023") == 1)
+    check("every unranked county-year is in the footnote list", one(con, "SELECT COUNT(*) FROM gold_county_reliability WHERE NOT ranking_eligible")
+          == one(con, "SELECT COUNT(*) FROM gold_county_ranking_footnotes"))
     check("reporting-unit outage hours add up to Gold event customer-hours",
           abs(one(con, "SELECT SUM(customer_hours_lost) FROM gold_unit_reliability")
               - one(con, "SELECT SUM(customer_hours_lost) FROM gold_outage_events WHERE fips_code IN (SELECT fips_code FROM dim_county_customers)")) < 1)
@@ -238,6 +252,7 @@ def expected(con) -> None:
                  UNION ALL SELECT 'gold_unit_reliability', COUNT(*) FROM gold_unit_reliability
                  UNION ALL SELECT 'gold_county_reliability', COUNT(*) FROM gold_county_reliability
                  UNION ALL SELECT 'gold_territory_unit_reliability', COUNT(*) FROM gold_territory_unit_reliability
+                 UNION ALL SELECT 'gold_county_ranking_footnotes', COUNT(*) FROM gold_county_ranking_footnotes
                  UNION ALL SELECT 'gold_state_reliability', COUNT(*) FROM gold_state_reliability
                  UNION ALL SELECT 'gold_territory_reliability', COUNT(*) FROM gold_territory_reliability
                  UNION ALL SELECT 'gold_utility_reliability', COUNT(*) FROM gold_utility_reliability
