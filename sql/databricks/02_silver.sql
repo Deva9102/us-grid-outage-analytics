@@ -20,7 +20,7 @@ USE SCHEMA outages;
 
 
 -- -----------------------------------------------------------------------------
--- dim_county_customers (D5, D9, D12, D13, D21, D35)
+-- dim_county_customers (D5, D9, D12, D13, D21, D35, D36)
 -- -----------------------------------------------------------------------------
 
 CREATE OR REPLACE TABLE dim_county_customers (
@@ -30,9 +30,10 @@ CREATE OR REPLACE TABLE dim_county_customers (
     denominator_mismatch BOOLEAN NOT NULL COMMENT 'True when MCC and 2024 total_customers differ by more than 2x (D12)',
     calibration_factor   DOUBLE  NOT NULL COMMENT 'D13 denominator / final denominator for this county; 1.0 if unchanged (D21, D35)',
     state_calibration_factor DOUBLE NOT NULL COMMENT 'State D13 total / EIA-861 2024 total where above 1.25, else 1.0 (D21)',
-    peak_floor_applied   BOOLEAN NOT NULL COMMENT 'True when the county was held at its peak customers out (D35)'
+    peak_floor_applied   BOOLEAN NOT NULL COMMENT 'True when the county was held at its peak customers out (D35)',
+    peak_floor_skipped   BOOLEAN NOT NULL COMMENT 'True when the peak exceeds 1.25x the D13 denominator, so no floor applies (D36)'
 )
-COMMENT 'Customer denominator per county, decisions D12, D13, D21 and D35';
+COMMENT 'Customer denominator per county, decisions D12, D13, D21, D35 and D36';
 
 INSERT OVERWRITE dim_county_customers
 WITH
@@ -121,24 +122,39 @@ states AS (
     FROM state_totals AS s
     LEFT JOIN silver_eia_state_customers AS e ON e.state_abbr = s.state_abbr AND e.data_year = 2024
 ),
+-- The floor is the peak, unless the peak is more than 1.25x the D13 denominator: such a peak is
+-- likely misattributed, so that county gets no floor and takes the common rescaling (D36).
+floors AS (
+    SELECT
+        d.fips_code,
+        d.customers AS d13_customers,
+        COALESCE(p.peak_customers_out, 0) > 1.25 * d.customers AS floor_skipped,
+        CASE
+            WHEN COALESCE(p.peak_customers_out, 0) > 1.25 * d.customers THEN 0
+            ELSE COALESCE(p.peak_customers_out, 0)
+        END AS floor_customers
+    FROM d13 AS d
+    LEFT JOIN peaks AS p ON p.fips_code = d.fips_code
+    WHERE d.customers IS NOT NULL
+),
 -- Counties of calibrated states, ordered by how far their floor sits above their D13 value.
 ordered AS (
     SELECT
-        d.fips_code,
-        d.customers                                    AS d13_customers,
-        COALESCE(p.peak_customers_out, 0)              AS floor_customers,
-        COALESCE(p.peak_customers_out, 0) / d.customers AS floor_ratio,
+        f.fips_code,
+        f.d13_customers,
+        f.floor_customers,
+        f.floor_customers / f.d13_customers AS floor_ratio,
+        f.floor_skipped,
         r.state_abbr,
         st.eia_customers,
         ROW_NUMBER() OVER (
             PARTITION BY r.state_abbr
-            ORDER BY COALESCE(p.peak_customers_out, 0) / d.customers DESC, d.fips_code
+            ORDER BY f.floor_customers / f.d13_customers DESC, f.fips_code
         ) AS pos
-    FROM d13 AS d
-    INNER JOIN bronze_state_regions AS r ON r.state_fips = LEFT(d.fips_code, 2)
+    FROM floors AS f
+    INNER JOIN bronze_state_regions AS r ON r.state_fips = LEFT(f.fips_code, 2)
     INNER JOIN states AS st ON st.state_abbr = r.state_abbr
-    LEFT JOIN peaks AS p ON p.fips_code = d.fips_code
-    WHERE st.state_calibration_factor > 1 AND d.customers IS NOT NULL
+    WHERE st.state_calibration_factor > 1
 ),
 -- Holding the first m counties at their floor leaves EIA minus those floors for the rest,
 -- which are scaled by one common factor (D35). m = 0 is plain D21 scaling.
@@ -174,6 +190,7 @@ final AS (
         d.denominator_mismatch,
         COALESCE(st.state_calibration_factor, 1.0) AS state_calibration_factor,
         COALESCE(o.pos <= s.m, FALSE)              AS peak_floor_applied,
+        COALESCE(o.floor_skipped, FALSE)           AS peak_floor_skipped,
         CASE
             WHEN o.pos IS NULL THEN d.customers
             WHEN o.pos <= s.m  THEN o.floor_customers
@@ -193,7 +210,8 @@ SELECT
     denominator_mismatch,
     CAST(COALESCE(d13_customers / NULLIF(customers, 0), 1.0) AS DOUBLE) AS calibration_factor,
     CAST(state_calibration_factor AS DOUBLE)                            AS state_calibration_factor,
-    peak_floor_applied
+    peak_floor_applied,
+    peak_floor_skipped
 FROM final;
 
 
@@ -297,7 +315,7 @@ LEFT JOIN  dim_county_customers AS k ON k.fips_code  = d.fips_code;
 
 -- Denominator sources: total_customers_2024 2,687 / max_mcc_2024 372 / mcc 2 / NULL 2
 SELECT denominator_source, COUNT(*) AS counties, SUM(customers) AS customers,
-       COUNT_IF(state_calibration_factor > 1) AS calibrated_counties, COUNT_IF(peak_floor_applied) AS floored_counties
+       COUNT_IF(state_calibration_factor > 1) AS calibrated_counties, COUNT_IF(peak_floor_applied) AS floored_counties, COUNT_IF(peak_floor_skipped) AS floor_skipped_counties
 FROM dim_county_customers
 GROUP BY denominator_source
 ORDER BY counties DESC;
