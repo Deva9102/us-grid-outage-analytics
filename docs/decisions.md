@@ -26,6 +26,11 @@ Row counts come from DuckDB runs against the raw EAGLE-I files
 | D18 | Event threshold scales with county size: GREATEST(100, 0.25% x customers) | Gold | 2026-11-20 |
 | D19 | County feed dropouts cannot end or split an event | Gold | 2026-11-20 |
 | D20 | Yearly EAGLE-I files reach Bronze as all-STRING Parquet | Bronze | 2026-11-20 |
+| D21 | Calibrate county denominators to EIA-861 state totals above a 1.25 ratio | Silver | 2026-11-21 |
+| D22 | Per-state coverage table; states below 70% customer coverage footnoted | Gold | 2026-11-21 |
+| D23 | EIA-861 rules: Parts A+C+D, IEEE 1366 rankings, no county-to-utility attribution | Silver / Gold | 2026-11-21 |
+| D24 | OE-417 times as local time of the first state; event type mapping file | Silver | 2026-11-21 |
+| D25 | OE-417 covers 2022-2023 unless 2024 is added by hand; archive provenance | Bronze | 2026-11-21 |
 
 ---
 
@@ -780,8 +785,215 @@ dropouts per year (6,746 / 5,736 / 6,568), `exceeds_customers` rows per year (1,
 denominator sources (2,687 / 372 / 2 / 2), and the top 10 events by `customer_hours_lost`, by
 event ID and customer-hours (D17).
 
+## D21. Calibrate denominators to EIA-861 state totals
+
+**What:** For each state, compare the sum of D13 county denominators with the EIA-861 2024 state
+customer total (Sales to Ultimate Customers, Parts A + C + D only, never Part B; see D23). Where
+the ratio D13 / EIA is above 1.25, divide every county denominator in that state by the ratio, so
+the state total matches EIA and each county keeps its share. States at or below 1.25 are not
+changed, and no state is ever scaled up: a lower EAGLE-I total usually means counties or utilities
+EAGLE-I does not track (D22), not too few customers.
+- Each county still has exactly one denominator for all years (D13), now
+  `customers = ROUND(D13 customers / calibration_factor)`.
+- `dim_county_customers` gets a fifth column, `calibration_factor` (DOUBLE, 1.0 where not
+  calibrated). `denominator_source` and `denominator_mismatch` are unchanged, so the
+  uncalibrated value stays derivable (`customers x calibration_factor`).
+- EIA 2024 is used for all years, matching D13's single 2024-based denominator.
+
+**Why:** The source profile (`docs/data_profile_sources.md`) found D13 totals far above EIA in some
+states. In Massachusetts, EAGLE-I's own 2024 `total_customers` gives Suffolk County 1,666,496
+customers for about 770,000 residents, and D12's larger-value rule keeps that value. Per-1,000
+rates there would be about half their true value, which matters directly for analysis question 5
+(Eversource and National Grid). EIA-861 is the utilities' own reported customer count, so it is the
+right total; EAGLE-I still decides how that total splits across counties. The 1.25 threshold leaves
+ordinary differences alone (median state ratio 1.012) and catches only clear inflation. This also
+corrects part of D12's reasoning: undercounts are the common error in MCC, but EAGLE-I's 2024
+`total_customers` overcounts in a few states.
+
+**Rows affected:** 5 states, 246 counties.
+
+| State | D13 customers | EIA 2024 (A+C+D) | Ratio before | calibration_factor | Calibrated total | Ratio after |
+|---|---|---|---|---|---|---|
+| MA | 6,799,970 | 3,372,904 | 2.016 | 2.0161 | 3,372,906 | 1.000 |
+| SC | 5,758,961 | 2,998,873 | 1.920 | 1.9204 | 2,998,872 | 1.000 |
+| HI | 668,078 | 506,988 | 1.318 | 1.3177 | 506,989 | 1.000 |
+| MO | 4,321,653 | 3,347,316 | 1.291 | 1.2911 | 3,347,316 | 1.000 |
+| SD | 658,178 | 516,156 | 1.275 | 1.2752 | 516,157 | 1.000 |
+
+(Calibrated totals differ from EIA by 1-2 customers from rounding each county.)
+
+- Suffolk County, MA (25025): 1,666,496 before, **826,611** after (factor 2.0161).
+- National total: 177,246,426 before, 169,781,826 after, against EIA 165,391,292 (ratio 1.072 to 1.027).
+- Counties scaled per state: MA 14, SC 46, HI 5, MO 115, SD 66.
+
+Knock-on effects, measured in DuckDB, applied when Silver and Gold are rebuilt:
+- D4 `exceeds_customers` rows: 1,820 / 365 / 8,434 before; **1,878 / 369 / 9,940** after (2022 /
+  2023 / 2024), in 23 / 21 / 73 counties.
+- D11: counties under 1,000 customers go from 40 to 41 (Buffalo County, SD, 46017: 1,239 to 972).
+- D18: the event threshold falls in the 62 calibrated counties with more than 40,000 customers, so
+  event counts in MA, SC, HI, MO and SD will change. None of the D18 test counties (Pinellas FL,
+  Wayne MI, Los Angeles CA, Harris TX) is in a calibrated state, so D18's margins are unchanged.
+
+## D22. Coverage table and footnotes
+
+**What:** Gold gets a per-state coverage table: counties with EAGLE-I data, total counties (from the
+NWS zone-county file in effect, `bp05mr24`), and the covered share of EIA customers,
+`LEAST(calibrated EAGLE-I customers / EIA 2024 customers, 1)`. Every state ranking and regional
+comparison shows coverage next to the result. States below 70% customer coverage are listed in a
+footnote and not ranked.
+
+**Why:** EAGLE-I does not track every county or utility. Comparing a fully covered state with a
+partly covered one understates the second, and the reader cannot tell without the coverage figure.
+Customer coverage matters more than county coverage: an untracked county with few customers barely
+changes a state's picture.
+
+**Rows affected:** 53 states and territories (50 states, DC, PR, VI). With D21 applied, **none is
+below 70%**, so no state is footnoted today; 50 of 53 are at 90% or above. Lowest:
+
+| State | EAGLE-I counties | Total counties | Customer coverage |
+|---|---|---|---|
+| AK | 9 | 30 | 76.5% |
+| NE | 56 | 93 | 86.4% |
+| DC | 1 | 1 | 89.2% |
+| CO | 61 | 64 | 92.8% |
+| WY | 22 | 23 | 94.5% |
+| AZ | 15 | 15 | 94.7% |
+
+Puerto Rico: EAGLE-I has 7 of 78 municipios, but these are **PREPA's 7 operating regions** filed
+under the FIPS code of each region's namesake municipio: Arecibo, Bayamón, Caguas, Carolina,
+Mayagüez, Ponce and San Juan. Together they hold 1.55 M customers against EIA's 1.51 M, so customer
+coverage is complete but the geography is regional. The Fiona events in the top 10 (Mayagüez, Ponce,
+Caguas, Arecibo) are region-level events, not single-municipio events, and findings must say so.
+Per-1,000 rates for these regions are valid; county-level maps of PR are not. The US Virgin Islands
+are reported by island (St. Croix, St. John, St. Thomas).
+
+Caveat: coverage uses the D21 denominators, which are capped at EIA only above a ratio of 1.25. A
+state between 1.0 and 1.25 shows 100% even if a few counties are missing.
+
+## D23. EIA-861 rules
+
+**What:**
+- Customer totals from Sales to Ultimate Customers use Parts A (bundled), C (delivery-only) and D
+  (bundled, other providers). Part B (energy-only) is never added.
+- Reliability rankings (SAIDI, SAIFI) use only utilities reporting under the IEEE 1366 standard,
+  with and without major event days. Utilities reporting under another standard are listed
+  separately and never ranked together with IEEE reporters.
+- There is no county-to-utility attribution. EAGLE-I is county-level, and a county is usually served
+  by several utilities, so utility questions (analysis question 5) use EIA-861 only. Service
+  Territory is used only to describe which counties a utility serves.
+
+**Why:**
+- In retail-choice states the same customer appears in Part B (energy supplier) and Part C (wires
+  utility); B and C have identical customer totals in every year. Adding B double counts.
+- IEEE 1366 and other standards define interruptions and major event days differently, so their
+  SAIDI values are not comparable. No utility reports both, so there is no overlap to calibrate on.
+- Service Territory lists counties by name with no shares of customers, and most counties have
+  several utilities, so county outages cannot be split between utilities.
+
+**Rows affected:**
+
+| Year | Part B = Part C customers | IEEE SAIDI with MED | IEEE SAIDI without MED | Other standard only | Neither |
+|---|---|---|---|---|---|
+| 2022 | 15,423,554 | 714 | 696 | 241 | 9 |
+| 2023 | 16,132,109 | 734 | 709 | 231 | 5 |
+| 2024 | 17,481,113 | 746 | 730 | 222 | 6 |
+
+- Reliability rows: 964 / 970 / 974; no row has both standards.
+- Service Territory 2024: 2,876 of 3,232 counties are served by more than one utility (median 3,
+  max 15).
+- All Eversource and National Grid entities report under IEEE 1366: Connecticut Light & Power,
+  NSTAR Electric, Public Service Co of NH, Massachusetts Electric, Nantucket Electric,
+  Niagara Mohawk and Narragansett Electric.
+
+## D24. OE-417 time zones and event types
+
+**What:**
+- OE-417 begin and restoration times are treated as **local time** of the first state listed in
+  `Area Affected`, converted to UTC with that state's primary IANA time zone from
+  `data/reference/state_time_zones.csv` (daylight saving time handled by the zone rules).
+- An OE-417 incident matches an EAGLE-I event in its counties when the EAGLE-I start falls within
+  +/-12 hours of the converted begin time. Rows without a state are not converted and not matched.
+- Event types are normalized through `data/reference/oe417_event_types.csv` (committed). Key:
+  lowercase, non-breaking spaces to spaces, leading dashes removed, separators unified to " - ",
+  spaces collapsed. Each key maps to one of 12 categories; a combined type takes the first matching
+  category in this priority: cyber, physical_attack, weather, equipment_failure, fuel_supply,
+  generation_inadequacy, transmission_interruption, system_operations, vandalism_theft,
+  suspicious_activity, other, unknown. "Threat of physical attack" counts as suspicious_activity.
+  `multiple_types = Y` marks combined entries.
+
+**Why:**
+- The file states no time zone. Read as UTC, OE-417 begin times sit 4-6 hours before the matching
+  EAGLE-I starts (most common offsets +5, +6, +4 h; `docs/data_profile_sources.md`), which fits US
+  local time in the Eastern and Central zones. The first listed state is the best available
+  location; states spanning two zones (for example Texas, Florida, Kentucky) can be off by one hour,
+  which the +/-12 hour window absorbs.
+- Event type text changed between form versions and is typed inconsistently (leading dashes,
+  non-breaking spaces, a "Sever Weather" typo, several types in one cell). A committed mapping makes
+  the categories reviewable and stable.
+
+**Rows affected:** 738 OE-417 rows (390 in 2022, 348 in 2023). Event types: **49 raw variants**
+(not 42, as stated in an earlier summary) collapse to 43 keys and 12 categories:
+
+| Category | Rows |
+|---|---|
+| weather | 176 |
+| vandalism_theft | 165 |
+| suspicious_activity | 119 |
+| system_operations | 105 |
+| physical_attack | 53 |
+| transmission_interruption | 38 |
+| other | 28 |
+| equipment_failure | 22 |
+| cyber | 13 |
+| unknown | 9 |
+| fuel_supply | 6 |
+| generation_inadequacy | 4 |
+
+83 rows cannot be converted or matched: 32 have no begin date and 51 name no recognizable state.
+
+## D25. OE-417 2024 availability and provenance
+
+**What:** OE-417 covers 2022 and 2023 only, unless the 2024 file is added by hand. If
+`data/raw/oe417/2024/` later holds the file, `scripts/download_oe417.py` verifies it and the
+pipeline picks it up with no other change. Findings that use OE-417 state the years covered.
+
+**Why:**
+- The official host, `www.oe.netl.doe.gov`, publishes only an IPv6 address (AAAA
+  `2620:111:a002:153::10:75`, no A record) and cannot be reached from an IPv4-only network
+  (checked 2026-11-20 and 2026-11-21). `doe417.pnnl.gov` answers, but it is the filing portal for
+  utilities, not the public data.
+- The Internet Archive holds copies of the official 2022 and 2023 download URLs, but none for 2024.
+  Archived captures of the summary page after December 2024 are HTTP 503 errors, and no download ID
+  above 84 was ever captured.
+
+**Provenance** (also recorded in `data/raw/oe417/<year>/OE417_<year>.source.txt`):
+
+| Year | Official URL | Archive capture | Verified |
+|---|---|---|---|
+| 2022 | `download.aspx?type=OE417XLS&ID=82` | 2024-11-27 22:28:54 UTC (`20241127222854`) | 390 events, 2022-01-01 to 2022-12-31 |
+| 2023 | `download.aspx?type=OE417XLS&ID=84` | 2024-12-19 21:18:45 UTC (`20241219211845`) | 348 rows, 316 with a begin date, 2023-01-01 to 2023-12-30 |
+| 2024 | not available | none | manual download needed |
+
+The files are the archive's raw bytes (`id_` URLs), not its HTML pages. xlrd warns that the 2022
+file size is not a whole number of sectors; the file still reads completely, with events through
+2022-12-31.
+
+**Rows affected:** none removed. OE-417 has 738 rows instead of the roughly 1,100 a full three
+years would hold.
+
 ---
 
 ## Open questions
 
-None. Q1 is resolved in D9; Q2 (fixed 100-customer threshold) is resolved in D18 and D19.
+Q1 is resolved in D9; Q2 (fixed 100-customer threshold) is resolved in D18 and D19.
+
+**Q3. Why only 62% of the top 100 EAGLE-I events match a NOAA event (for Prompt 8c).** In the
+source profile, 74% of the top 1,000 EAGLE-I events by customer-hours have a NOAA event in the same
+county between 24 hours before and 2 hours after the outage starts, but only 62% of the top 100.
+To break down before the storm match is built:
+- Coverage and geography: the Puerto Rico regions (D22) are matched by the namesake municipio only,
+  while NOAA reports Fiona by zone or by other municipios in the region.
+- Time windows: long hurricane events can start before NOAA's begin time in that county, or NOAA's
+  zone records can begin later than the first outages.
+- Event type labels: hurricane impacts are often recorded as Tropical Storm, Storm Surge/Tide,
+  High Wind or Flash Flood, in zones rather than counties.
