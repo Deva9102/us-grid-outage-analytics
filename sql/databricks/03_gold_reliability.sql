@@ -5,6 +5,7 @@
 --   gold_unit_reliability            outage hours per 1,000 customers per reporting unit and year, unranked (D38, D44)
 --   gold_county_reliability          the same for counties of the 50 states and DC, ranked (D38, D44)
 --   gold_territory_unit_reliability  the same for PR PREPA regions and VI districts, unranked (D44)
+--   gold_county_ranking_footnotes    county-years not ranked, with the rank they would have had (D45, D46)
 --   gold_state_reliability           the same per state, 50 states and DC, with D22 coverage (D38, D43)
 --   gold_territory_reliability       the same for Puerto Rico and the Virgin Islands, unranked (D43)
 --   gold_utility_reliability         EIA-861 SAIDI / SAIFI ranked within size bands, IEEE 1366 only (D39)
@@ -53,6 +54,22 @@ totals AS (
     FROM gold_outage_events
     GROUP BY fips_code, event_year
 ),
+-- Customer-hours from readings above the county's customers, which D4 caps: measured over the
+-- readings inside each event at or above its threshold (D45).
+capping AS (
+    SELECT
+        e.fips_code,
+        e.event_year AS year,
+        SUM(CASE WHEN s.customers_out > d.customers THEN d.customers * 0.25 END) AS capped_customer_hours
+    FROM gold_outage_events AS e
+    INNER JOIN silver_outages AS s
+        ON  s.fips_code      = e.fips_code
+        AND s.reading_time  >= e.event_start
+        AND s.reading_time   < e.event_end
+        AND s.customers_out >= e.event_threshold
+    INNER JOIN dim_county_customers AS d ON d.fips_code = e.fips_code
+    GROUP BY e.fips_code, e.event_year
+),
 rated AS (
     SELECT
         y.year,
@@ -67,30 +84,102 @@ rated AS (
         COALESCE(t.customer_hours_lost, 0)                             AS customer_hours_lost,
         t.max_peak_customers_out,
         COALESCE(t.customer_hours_lost, 0) * 1000.0 / NULLIF(c.customers, 0) AS outage_hours_per_1000_customers,
+        COALESCE(cp.capped_customer_hours, 0)                          AS capped_customer_hours,
+        COALESCE(cp.capped_customer_hours, 0) / NULLIF(t.customer_hours_lost, 0) AS capped_share,
+        t.max_peak_customers_out * 1.0 / NULLIF(c.customers, 0)        AS peak_to_customers,
         -- Ranked only with a denominator of 1,000+ (D11) in a state covered at 70%+ (D22).
         c.customers IS NOT NULL AND c.customers >= 1000 AND COALESCE(s.ranking_eligible, FALSE) AS ranking_eligible
     FROM counties AS c
     CROSS JOIN years AS y
     LEFT JOIN totals AS t ON t.fips_code = c.fips_code AND t.year = y.year
     LEFT JOIN names  AS n ON n.fips_code = c.fips_code
+    LEFT JOIN capping AS cp ON cp.fips_code = c.fips_code AND cp.year = y.year
     LEFT JOIN gold_state_coverage AS s ON s.state_abbr = c.state_abbr
 )
 SELECT * FROM rated;
 
 
 CREATE OR REPLACE TABLE gold_county_reliability
-COMMENT 'Outage hours per 1,000 customers per county and year, 50 states and DC, ranked where eligible (D38, D44)'
+COMMENT 'Outage hours per 1,000 customers per county and year, 50 states and DC, ranked unless footnoted (D38, D44, D45, D46)'
 AS
+WITH
 -- Counties of the 50 states and DC only; territory reporting units have their own table (D44).
--- RANK: 1 = most outage hours per 1,000 customers; ties share a rank (D38).
+base AS (
+    SELECT u.*, x.reason AS exclusion_reason, x.evidence AS exclusion_evidence
+    FROM gold_unit_reliability AS u
+    LEFT JOIN bronze_ranking_exclusions AS x
+        ON x.fips_code = u.fips_code AND TRY_CAST(x.year AS INT) = u.year
+    WHERE u.census_region <> 'Territory'
+),
+-- Why a county-year is not ranked; the first reason that applies is kept. Footnoted county-years
+-- stay in all raw totals (D9, D11, D22, D45, D46).
+reasons AS (
+    SELECT
+        *,
+        CASE
+            WHEN customers IS NULL THEN 'no denominator (D9)'
+            WHEN customers < 1000 THEN 'denominator under 1,000 customers (D11)'
+            WHEN NOT ranking_eligible THEN 'state below 70% customer coverage (D22)'
+            WHEN exclusion_reason IS NOT NULL THEN CONCAT('reviewed exclusion (D46): ', exclusion_reason)
+            WHEN capped_share > 0.25 AND peak_to_customers > 3
+                THEN 'over 25% of customer-hours from capped readings and peak above 3x customers (D45)'
+        END AS footnote_reason,
+        CASE
+            WHEN exclusion_reason IS NOT NULL THEN exclusion_evidence
+            WHEN capped_share > 0.25 AND peak_to_customers > 3
+                THEN CONCAT('capped share ', CAST(ROUND(capped_share * 100, 1) AS STRING),
+                            '%, peak ', CAST(ROUND(peak_to_customers, 1) AS STRING), 'x customers')
+        END AS footnote_evidence
+    FROM base
+)
+-- RANK: 1 = most outage hours per 1,000 customers; ties share a rank (D38). rank_without_footnotes is
+-- the place a footnoted county-year would have had among all counties with a rate.
 SELECT
-    *,
-    CASE WHEN ranking_eligible
-         THEN RANK() OVER (PARTITION BY year, ranking_eligible ORDER BY outage_hours_per_1000_customers DESC) END AS national_rank,
-    CASE WHEN ranking_eligible
-         THEN RANK() OVER (PARTITION BY year, state_abbr, ranking_eligible ORDER BY outage_hours_per_1000_customers DESC) END AS state_rank
-FROM gold_unit_reliability
-WHERE census_region <> 'Territory';
+    year,
+    fips_code,
+    county,
+    state_abbr,
+    state_name,
+    census_region,
+    fema_region,
+    customers,
+    events,
+    customer_hours_lost,
+    max_peak_customers_out,
+    outage_hours_per_1000_customers,
+    capped_customer_hours,
+    capped_share,
+    peak_to_customers,
+    footnote_reason IS NULL AS ranking_eligible,
+    footnote_reason,
+    footnote_evidence,
+    CASE WHEN outage_hours_per_1000_customers IS NOT NULL
+         THEN RANK() OVER (PARTITION BY year, outage_hours_per_1000_customers IS NOT NULL
+                           ORDER BY outage_hours_per_1000_customers DESC) END AS rank_without_footnotes,
+    CASE WHEN footnote_reason IS NULL
+         THEN RANK() OVER (PARTITION BY year, footnote_reason IS NULL ORDER BY outage_hours_per_1000_customers DESC) END AS national_rank,
+    CASE WHEN footnote_reason IS NULL
+         THEN RANK() OVER (PARTITION BY year, state_abbr, footnote_reason IS NULL ORDER BY outage_hours_per_1000_customers DESC) END AS state_rank
+FROM reasons;
+
+
+CREATE OR REPLACE TABLE gold_county_ranking_footnotes
+COMMENT 'County-years shown as footnotes instead of ranks, with the rank they would have had and why (D11, D45, D46)'
+AS
+SELECT
+    year,
+    fips_code,
+    county,
+    state_abbr,
+    customers,
+    outage_hours_per_1000_customers,
+    rank_without_footnotes AS would_have_rank,
+    footnote_reason,
+    footnote_evidence,
+    capped_share,
+    peak_to_customers
+FROM gold_county_reliability
+WHERE footnote_reason IS NOT NULL;
 
 
 CREATE OR REPLACE TABLE gold_territory_unit_reliability
