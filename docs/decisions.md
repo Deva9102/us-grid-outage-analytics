@@ -41,6 +41,7 @@ Row counts come from DuckDB runs against the raw EAGLE-I files
 | D33 | OE-417 Silver parsing: rows, dates, restoration, area tokens | Silver | 2026-11-21 |
 | D34 | OE-417 county names matched to FIPS once, in Silver | Silver | 2026-11-21 |
 | D35 | Calibrated denominators never below a county's peak customers out (resolves Q4) | Silver | 2026-11-21 |
+| D36 | No peak floor when the peak exceeds 1.25x the uncalibrated denominator (resolves Q5) | Silver | 2026-11-21 |
 
 ---
 
@@ -1222,6 +1223,10 @@ end up with at least one county.
 
 ## D35. Peak floor for calibrated denominators (resolves Q4)
 
+**Amended by D36:** a peak above 1.25x the D13 denominator gives no floor; Harding SD (46063) is
+therefore no longer floored, leaving 11 floored counties. The tables below are the original D35
+measurements.
+
 **What:** In the states D21 calibrates, no county's denominator may fall below its peak
 `customers_out`, the highest reading EAGLE-I reported for it in 2022-2024. Counties that would fall
 below are held at their peak. The remaining reduction is spread proportionally over the state's other
@@ -1294,6 +1299,42 @@ Effects (DuckDB, all years; D13 = uncalibrated, D21 = uniform scaling, D35 = thi
   lower state factor slightly lengthens their events. The event IDs of the two SC events change
   (45045-00330, 45083-00354), because more events now precede them in those counties.
 
+## D36. No peak floor for a likely misattributed peak (resolves Q5)
+
+**What:** The D35 peak floor is skipped when a county's peak `customers_out` is more than 1.25 times
+its uncalibrated (D13) denominator. That county gets no floor and takes the common D21/D35
+rescaling of its state like any unfloored county. Raw readings are not changed; the high readings
+stay in Silver and are flagged by `exceeds_customers` (D4). `dim_county_customers` gets
+`peak_floor_skipped` (true for such counties in calibrated states).
+
+**Why:** A county cannot have more customers out than customers. When a peak is well above the
+county's own customer count, the more likely explanation is that a utility assigned another
+county's outage to it, not that the county is larger than reported. Using such a peak as a floor
+would inflate the denominator from a guess. 1.25 is the same tolerance D21 uses before calibrating a
+state.
+- Option A (keep the floor) is rejected: it raised Harding's denominator 2.6x from a 90-minute
+  reading and moved it above the D11 ranking cutoff.
+- Option C (exclude the peak in Silver) is rejected: it would delete data based on a guess. D36
+  leaves the readings in place, visible and flagged, and only declines to build a denominator on
+  them.
+
+**Rows affected:** one county; 11 counties keep their D35 floor.
+
+| FIPS | County | D13 | D35 (floored) | D36 | Below D11 cutoff of 1,000 |
+|---|---|---|---|---|---|
+| 46063 | Harding, SD | 584 | 1,532 | **458** | **yes**, excluded from per-1,000 rankings again |
+
+- South Dakota now has no floored county, so every SD county equals its D21 value.
+- Harding keeps all 39 readings above 458 flagged by `exceeds_customers` (6 of them from the
+  2024-11-18 spike, peak 1,532). South Dakota overcount rows are 39, as under D21.
+- D11: 41 counties below 1,000 (40 under D35).
+- National: 446,261 events (149,695 / 144,747 / 151,819), 19,190 dropouts, overcount rows
+  1,841 / 365 / 8,437.
+- **Top 10:** unchanged from D35, the same storms in the same order as without calibration.
+- For reference, 30 counties outside the calibrated states also have a peak above 1.25x their
+  denominator. D36 does not affect them, because only calibrated states have floors; their readings
+  are flagged by `exceeds_customers` as before.
+
 ---
 
 ## Open questions
@@ -1313,11 +1354,4 @@ To break down before the storm match is built:
 
 **Q4.** Resolved in D35 (option B; option C rejected).
 
-**Q5. Harding County, SD (46063): floor from a likely misattributed peak.** D35 holds Harding at 1,532
-customers, its peak on 2024-11-18 (1.5 hours), although its reported `total_customers` is 584 and it
-never otherwise exceeded 632. Its denominator rises 2.6x and it moves above the D11 cutoff of 1,000.
-Options:
-- A. Keep D35 as is.
-- B. Skip the floor when the peak exceeds the county's uncalibrated denominator by more than 1.25x;
-  Harding is the only county affected today.
-- C. Treat such a short over-denominator peak as misattributed and exclude it in Silver.
+**Q5.** Resolved in D36 (option B; options A and C rejected).
