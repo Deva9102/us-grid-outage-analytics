@@ -39,7 +39,7 @@ eaglei AS (
         COUNT(*)                                             AS eaglei_counties,
         COUNT_IF(customers IS NOT NULL)                      AS counties_with_denominator,
         SUM(customers)                                       AS eaglei_customers,
-        MAX(calibration_factor)                              AS calibration_factor
+        MAX(state_calibration_factor)                        AS calibration_factor
     FROM dim_county_customers
     GROUP BY 1
 ),
