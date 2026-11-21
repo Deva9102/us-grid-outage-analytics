@@ -185,107 +185,199 @@ def report_oe417(con) -> None:
 
 # -----------------------------------------------------------------------------
 
+READINGS_SQL = """
+    SELECT LPAD(TRIM(fips_code), 5, '0') AS fips_code, CAST(run_start_time AS TIMESTAMP) AS reading_time,
+           TRY_CAST(customers_out AS BIGINT) AS customers_out FROM bronze_eaglei_2022
+    UNION ALL
+    SELECT LPAD(TRIM(fips_code), 5, '0'), CAST(run_start_time AS TIMESTAMP), TRY_CAST("sum" AS BIGINT) FROM bronze_eaglei_2023
+    UNION ALL
+    SELECT LPAD(TRIM(fips_code), 5, '0'), CAST(run_start_time AS TIMESTAMP), TRY_CAST(customers_out AS BIGINT) FROM bronze_eaglei_2024
+"""
+
+
+def iterate_floors(con) -> dict[str, int]:
+    """The D35 rule as a literal loop: floor every county below its peak, rescale the rest, repeat."""
+    rows = con.execute(f"""
+        SELECT r.state_abbr, u.fips_code, u.customers AS d13, COALESCE(p.peak, 0) AS peak, e.customers AS eia
+        FROM dim_d13 u
+        JOIN bronze_state_regions r ON r.state_fips = LEFT(u.fips_code, 2)
+        JOIN silver_eia_state_customers e ON e.state_abbr = r.state_abbr AND e.data_year = 2024
+        JOIN dim_d35 c USING (fips_code)
+        LEFT JOIN (SELECT fips_code, MAX(customers_out) AS peak FROM ({READINGS_SQL}) GROUP BY 1) p USING (fips_code)
+        WHERE c.state_calibration_factor > 1 AND u.customers IS NOT NULL
+    """).fetchall()
+    states: dict[str, list] = {}
+    for st, f, d, pk, eia in rows:
+        states.setdefault(st, []).append((f, d, pk, eia))
+    out, rounds = {}, {}
+    for st, counties in states.items():
+        eia = counties[0][3]
+        floored: set[str] = set()
+        for n in range(1, len(counties) + 2):
+            rest = [(f, d) for f, d, pk, _ in counties if f not in floored]
+            k = (eia - sum(pk for f, d, pk, _ in counties if f in floored)) / sum(d for _, d in rest)
+            below = {f for f, d, pk, _ in counties if f not in floored and k * d < pk}
+            if not below:
+                break
+            floored |= below
+        rounds[st] = n
+        for f, d, pk, _ in counties:
+            out[f] = pk if f in floored else round(k * d)
+    print("  iteration rounds per state:", rounds)
+    return out
+
+
 def calibration_effect(con) -> None:
-    print("\n=== D21 calibration: denominators ===")
-    silver.build_dim(con, calibrated=False)
-    con.execute("CREATE OR REPLACE TABLE dim_uncal AS SELECT * FROM dim_county_customers")
-    silver.build_dim(con, calibrated=True)
-    con.execute("CREATE OR REPLACE TABLE dim_cal AS SELECT * FROM dim_county_customers")
-    show(con, """SELECT r.state_abbr, COUNT(*) AS counties, ANY_VALUE(c.calibration_factor) AS factor,
-                        SUM(u.customers) AS before, SUM(c.customers) AS after, e.customers AS eia_2024
-                 FROM dim_cal c JOIN dim_uncal u USING (fips_code)
+    print("\n=== D21 / D35 calibration: denominators ===")
+    for mode in ("d13", "d21", "d35"):
+        silver.build_dim(con, mode=mode)
+        con.execute(f"CREATE OR REPLACE TABLE dim_{mode} AS SELECT * FROM dim_county_customers")
+    show(con, """SELECT r.state_abbr, COUNT(*) AS counties, ANY_VALUE(c.state_calibration_factor) AS state_factor,
+                        COUNT_IF(c.peak_floor_applied) AS floored,
+                        SUM(u.customers) AS d13, SUM(m.customers) AS d21, SUM(c.customers) AS d35, e.customers AS eia_2024
+                 FROM dim_d35 c JOIN dim_d13 u USING (fips_code) JOIN dim_d21 m USING (fips_code)
                  JOIN bronze_state_regions r ON r.state_fips = LEFT(c.fips_code, 2)
                  LEFT JOIN silver_eia_state_customers e ON e.state_abbr = r.state_abbr AND e.data_year = 2024
-                 WHERE c.calibration_factor > 1 GROUP BY r.state_abbr, e.customers ORDER BY factor DESC""")
-    print("Suffolk MA:", con.execute("SELECT u.customers, c.customers FROM dim_cal c JOIN dim_uncal u USING (fips_code) WHERE fips_code = '25025'").fetchall())
+                 WHERE c.state_calibration_factor > 1 GROUP BY r.state_abbr, e.customers ORDER BY 1""")
     check("5 states calibrated, 246 counties", con.execute(
-        "SELECT COUNT(DISTINCT LEFT(fips_code, 2)), COUNT(*) FROM dim_cal WHERE calibration_factor > 1").fetchall() == [(5, 246)])
+        "SELECT COUNT(DISTINCT LEFT(fips_code, 2)), COUNT(*) FROM dim_d35 WHERE state_calibration_factor > 1").fetchall() == [(5, 246)])
+    check("each calibrated state total equals EIA within 10 customers (rounding)", one(con, """
+        SELECT COUNT(*) FROM (SELECT r.state_abbr, SUM(d.customers) s, ANY_VALUE(e.customers) e
+            FROM dim_d35 d JOIN bronze_state_regions r ON r.state_fips = LEFT(d.fips_code, 2)
+            JOIN silver_eia_state_customers e ON e.state_abbr = r.state_abbr AND e.data_year = 2024
+            WHERE d.state_calibration_factor > 1 GROUP BY 1) WHERE ABS(s - e) > 10""") == 0)
+
+    looped = iterate_floors(con)
+    sql = dict(con.execute("SELECT fips_code, customers FROM dim_d35 WHERE state_calibration_factor > 1").fetchall())
+    diffs = [f for f in looped if abs(looped[f] - sql[f]) > 1]
+    check(f"SQL result equals the literal iteration for all {len(looped)} counties ({len(diffs)} differ)", not diffs)
+
+    con.execute(f"""
+        CREATE OR REPLACE TABLE floor_peaks AS
+        WITH r AS (
+            SELECT x.*, LAG(customers_out) OVER w AS prev_out, LEAD(customers_out) OVER w AS next_out,
+                   LAG(reading_time) OVER w AS prev_time, LEAD(reading_time) OVER w AS next_time
+            FROM ({READINGS_SQL}) x
+            WHERE fips_code IN (SELECT fips_code FROM dim_d35 WHERE peak_floor_applied)
+            WINDOW w AS (PARTITION BY fips_code ORDER BY reading_time)
+        )
+        SELECT fips_code, arg_max(reading_time, customers_out) AS peak_time, MAX(customers_out) AS peak,
+               arg_max(CASE WHEN prev_time = reading_time - INTERVAL 15 MINUTE THEN prev_out ELSE 0 END, customers_out) AS prev_out,
+               arg_max(CASE WHEN next_time = reading_time + INTERVAL 15 MINUTE THEN next_out ELSE 0 END, customers_out) AS next_out
+        FROM r GROUP BY 1
+    """)
+    con.execute(f"""
+        CREATE OR REPLACE TABLE floor_sustained AS
+        SELECT x.fips_code, COUNT(*) AS readings_above_half_peak
+        FROM ({READINGS_SQL}) x JOIN floor_peaks p USING (fips_code)
+        WHERE x.customers_out >= 0.5 * p.peak GROUP BY 1
+    """)
+    print("\nCounties held at their peak (D35):")
+    show(con, """
+        SELECT c.fips_code, n.county, r.state_abbr AS st, u.customers AS d13, m.customers AS d21_only, c.customers AS d35,
+               p.peak, strftime(p.peak_time, '%Y-%m-%d %H:%M') AS peak_utc, ROUND(p.peak / u.customers, 2) AS peak_vs_d13,
+               p.prev_out, p.next_out, s.readings_above_half_peak AS sustained,
+               CASE WHEN p.peak > u.customers THEN 'peak above uncalibrated denominator; ' ELSE '' END
+               || CASE WHEN p.peak > 2 * GREATEST(p.prev_out, p.next_out) THEN 'isolated spike' ELSE '' END AS flag
+        FROM dim_d35 c JOIN dim_d13 u USING (fips_code) JOIN dim_d21 m USING (fips_code)
+        JOIN floor_peaks p USING (fips_code) JOIN floor_sustained s USING (fips_code)
+        JOIN bronze_state_regions r ON r.state_fips = LEFT(c.fips_code, 2)
+        LEFT JOIN (SELECT DISTINCT fips_code, county FROM bronze_eaglei_2024) n USING (fips_code)
+        WHERE c.peak_floor_applied ORDER BY r.state_abbr, p.peak DESC
+    """)
+    con.execute("CREATE OR REPLACE TABLE dim_county_customers AS SELECT * FROM dim_d35")
 
 
 def gold_effect(con) -> None:
-    print("\n=== Silver outages (all years, calibrated) ===")
+    print("\n=== Silver outages (all years, D35) ===")
     silver.bronze(con, month_filter=None)
+    con.execute("CREATE OR REPLACE TABLE dim_county_customers AS SELECT * FROM dim_d35")
     for name, _, sql in silver.SILVER_STEPS:
         con.execute(f"CREATE OR REPLACE TABLE {name} AS {sql}")
     for name, _, _ in silver.SILVER_STEPS[:-1]:
         con.execute(f"DROP TABLE {name}")
     show(con, "SELECT year, COUNT(*) AS rows, COUNT(*) FILTER (WHERE exceeds_customers) AS exceeds FROM silver_outages GROUP BY 1 ORDER BY 1")
 
-    print("\n=== Gold events: uncalibrated vs calibrated ===")
-    con.execute("CREATE OR REPLACE TABLE dim_county_customers AS SELECT * FROM dim_uncal")
-    gold.build_gold(con)
-    for t in ("gold_outage_events", "gold_event_thresholds", "gold_feed_dropouts"):
-        con.execute(f"CREATE OR REPLACE TABLE {t}_uncal AS SELECT * FROM {t}")
-    con.execute("CREATE OR REPLACE TABLE dim_county_customers AS SELECT * FROM dim_cal")
-    gold.build_gold(con, skip=("gold_collection_runs",))
+    print("\n=== Gold events for D13, D21 and D35 denominators ===")
+    for i, mode in enumerate(("d13", "d21", "d35")):
+        con.execute(f"CREATE OR REPLACE TABLE dim_county_customers AS SELECT * FROM dim_{mode}")
+        gold.build_gold(con, skip=("gold_collection_runs",) if i else ())
+        for t in ("gold_outage_events", "gold_event_thresholds", "gold_feed_dropouts"):
+            con.execute(f"CREATE OR REPLACE TABLE {t}_{mode} AS SELECT * FROM {t}")
 
     states = ", ".join(f"'{s}'" for s in CALIBRATED_STATES)
-    print("\nPer calibrated state:")
+    print("\nPer calibrated state (events, overcount rows in Silver, customer-hours in M):")
     show(con, f"""
         WITH st AS (SELECT state_fips, state_abbr FROM bronze_state_regions WHERE state_abbr IN ({states})),
-        ev AS (SELECT LEFT(fips_code, 2) sf, COUNT(*) n, SUM(customer_hours_lost) ch FROM gold_outage_events GROUP BY 1),
-        evu AS (SELECT LEFT(fips_code, 2) sf, COUNT(*) n, SUM(customer_hours_lost) ch FROM gold_outage_events_uncal GROUP BY 1),
-        th AS (SELECT LEFT(c.fips_code, 2) sf, COUNT(*) FILTER (WHERE c.event_threshold <> u.event_threshold) changed,
-                      MEDIAN(u.event_threshold) FILTER (WHERE c.event_threshold <> u.event_threshold) med_before,
-                      MEDIAN(c.event_threshold) FILTER (WHERE c.event_threshold <> u.event_threshold) med_after
-               FROM gold_event_thresholds c JOIN gold_event_thresholds_uncal u USING (fips_code) GROUP BY 1),
-        ex AS (SELECT LEFT(s.fips_code, 2) sf,
-                      COUNT(*) FILTER (WHERE s.customers_out > u.customers) ex_before,
-                      COUNT(*) FILTER (WHERE s.customers_out > c.customers) ex_after
-               FROM silver_outages s JOIN dim_uncal u USING (fips_code) JOIN dim_cal c USING (fips_code)
-               WHERE LEFT(s.fips_code, 2) IN (SELECT state_fips FROM st) GROUP BY 1)
-        SELECT st.state_abbr, evu.n AS events_before, ev.n AS events_after,
-               th.changed AS thresholds_changed, ROUND(th.med_before) AS median_threshold_before, ROUND(th.med_after) AS median_threshold_after,
-               ex.ex_before AS exceeds_before, ex.ex_after AS exceeds_after,
-               ROUND(evu.ch / 1e6, 2) AS cust_hours_m_before, ROUND(ev.ch / 1e6, 2) AS cust_hours_m_after
-        FROM st JOIN ev ON ev.sf = st.state_fips JOIN evu ON evu.sf = st.state_fips
-        JOIN th ON th.sf = st.state_fips JOIN ex ON ex.sf = st.state_fips ORDER BY 1
+        ev AS (
+            SELECT LEFT(fips_code, 2) sf, 'd13' m, COUNT(*) n, SUM(customer_hours_lost) ch FROM gold_outage_events_d13 GROUP BY 1
+            UNION ALL SELECT LEFT(fips_code, 2), 'd21', COUNT(*), SUM(customer_hours_lost) FROM gold_outage_events_d21 GROUP BY 1
+            UNION ALL SELECT LEFT(fips_code, 2), 'd35', COUNT(*), SUM(customer_hours_lost) FROM gold_outage_events_d35 GROUP BY 1
+        ),
+        ex AS (
+            SELECT LEFT(s.fips_code, 2) sf,
+                   COUNT(*) FILTER (WHERE s.customers_out > a.customers) ex_d13,
+                   COUNT(*) FILTER (WHERE s.customers_out > b.customers) ex_d21,
+                   COUNT(*) FILTER (WHERE s.customers_out > c.customers) ex_d35
+            FROM silver_outages s JOIN dim_d13 a USING (fips_code) JOIN dim_d21 b USING (fips_code) JOIN dim_d35 c USING (fips_code)
+            WHERE LEFT(s.fips_code, 2) IN (SELECT state_fips FROM st) GROUP BY 1
+        )
+        SELECT st.state_abbr,
+               MAX(n) FILTER (WHERE m = 'd13') AS events_d13, MAX(n) FILTER (WHERE m = 'd21') AS events_d21,
+               MAX(n) FILTER (WHERE m = 'd35') AS events_d35,
+               ANY_VALUE(ex.ex_d13) AS overcount_d13, ANY_VALUE(ex.ex_d21) AS overcount_d21, ANY_VALUE(ex.ex_d35) AS overcount_d35,
+               ROUND(MAX(ch) FILTER (WHERE m = 'd13') / 1e6, 2) AS ch_d13, ROUND(MAX(ch) FILTER (WHERE m = 'd21') / 1e6, 2) AS ch_d21,
+               ROUND(MAX(ch) FILTER (WHERE m = 'd35') / 1e6, 2) AS ch_d35
+        FROM st JOIN ev ON ev.sf = st.state_fips JOIN ex ON ex.sf = st.state_fips
+        GROUP BY st.state_abbr ORDER BY 1
     """)
-    print("\nNational, per year:")
-    show(con, """SELECT a.event_year, b.n AS events_before, a.n AS events_after FROM
-                 (SELECT event_year, COUNT(*) n FROM gold_outage_events GROUP BY 1) a
-                 JOIN (SELECT event_year, COUNT(*) n FROM gold_outage_events_uncal GROUP BY 1) b USING (event_year) ORDER BY 1""")
-    print("dropouts before / after:", one(con, "SELECT COUNT(*) FROM gold_feed_dropouts_uncal"), "/", one(con, "SELECT COUNT(*) FROM gold_feed_dropouts"))
+    print("\nNational events per year:")
+    show(con, """SELECT event_year, COUNT(*) FILTER (WHERE m = 'd13') AS d13, COUNT(*) FILTER (WHERE m = 'd21') AS d21,
+                        COUNT(*) FILTER (WHERE m = 'd35') AS d35
+                 FROM (SELECT event_year, 'd13' m FROM gold_outage_events_d13 UNION ALL SELECT event_year, 'd21' FROM gold_outage_events_d21
+                       UNION ALL SELECT event_year, 'd35' FROM gold_outage_events_d35) GROUP BY 1 ORDER BY 1""")
+    print("dropouts d13 / d21 / d35:", [one(con, f"SELECT COUNT(*) FROM gold_feed_dropouts_{m}") for m in ("d13", "d21", "d35")])
 
-    print("\nTop 10 by customer-hours: before vs after (matched by county and the before event's peak time):")
+    print("\nTop 10 by customer-hours, D13 (uncalibrated) vs D21 vs D35, matched by county and the D13 event's peak:")
     top = con.execute("""
-        WITH b AS (SELECT *, ROW_NUMBER() OVER (ORDER BY customer_hours_lost DESC) rk FROM gold_outage_events_uncal QUALIFY rk <= 10),
+        WITH b AS (SELECT *, ROW_NUMBER() OVER (ORDER BY customer_hours_lost DESC) rk FROM gold_outage_events_d13 QUALIFY rk <= 10),
         peaks AS (SELECT b.rk, b.event_id, b.fips_code, b.county, b.state_abbr, b.customer_hours_lost,
                          arg_max(s.reading_time, s.customers_out) AS peak_time
                   FROM b JOIN silver_outages s ON s.fips_code = b.fips_code AND s.reading_time >= b.event_start AND s.reading_time < b.event_end
                   GROUP BY ALL),
-        a AS (SELECT *, ROW_NUMBER() OVER (ORDER BY customer_hours_lost DESC) rk_after FROM gold_outage_events)
-        SELECT p.rk AS rank_before, p.event_id AS id_before, p.county, p.state_abbr AS st, ROUND(p.customer_hours_lost) AS before,
-               a.rk_after AS rank_after, a.event_id AS id_after, ROUND(a.customer_hours_lost) AS after
-        FROM peaks p LEFT JOIN a ON a.fips_code = p.fips_code AND p.peak_time >= a.event_start AND p.peak_time < a.event_end
+        m AS (SELECT *, ROW_NUMBER() OVER (ORDER BY customer_hours_lost DESC) rk FROM gold_outage_events_d21),
+        a AS (SELECT *, ROW_NUMBER() OVER (ORDER BY customer_hours_lost DESC) rk FROM gold_outage_events_d35)
+        SELECT p.rk AS rank_d13, p.county, p.state_abbr AS st, ROUND(p.customer_hours_lost) AS ch_d13,
+               m.rk AS rank_d21, ROUND(m.customer_hours_lost) AS ch_d21,
+               a.rk AS rank_d35, a.event_id AS id_d35, ROUND(a.customer_hours_lost) AS ch_d35
+        FROM peaks p
+        LEFT JOIN m ON m.fips_code = p.fips_code AND p.peak_time >= m.event_start AND p.peak_time < m.event_end
+        LEFT JOIN a ON a.fips_code = p.fips_code AND p.peak_time >= a.event_start AND p.peak_time < a.event_end
         ORDER BY 1
     """).fetchdf()
     print(top.to_string(index=False))
-    same_storms = bool((top.rank_after <= 10).all())
-    check("national top 10 contains the same 10 storms", same_storms)
-    print(f"  same order: {bool((top.rank_after == top.rank_before).all())}; "
-          f"customer-hours identical: {bool((top.before == top.after).all())}; "
-          f"event ids identical: {bool((top.id_before == top.id_after).all())}")
-    changed = top[(top.rank_after != top.rank_before) | (top.before != top.after)]
-    if len(changed):
-        print("  changed entries:")
-        print(changed.to_string(index=False))
+    check("D35 top 10 has the same storms as the uncalibrated top 10", bool((top.rank_d35 <= 10).all()))
+    print(f"  D35 vs uncalibrated: same order {bool((top.rank_d35 == top.rank_d13).all())}, "
+          f"same customer-hours {bool((top.ch_d35 == top.ch_d13).all())}")
 
-    print("\nExpected values for run_databricks.py:")
+    con.execute("CREATE OR REPLACE TABLE dim_county_customers AS SELECT * FROM dim_d35")
+    for t in ("gold_outage_events", "gold_event_thresholds", "gold_feed_dropouts"):
+        con.execute(f"CREATE OR REPLACE TABLE {t} AS SELECT * FROM {t}_d35")
+    print("\nExpected values for run_databricks.py (D35):")
     show(con, """SELECT 'gold_outage_events' t, COUNT(*) n FROM gold_outage_events
-                 UNION ALL SELECT 'gold_feed_dropouts', COUNT(*) FROM gold_feed_dropouts
-                 UNION ALL SELECT 'gold_event_thresholds', COUNT(*) FROM gold_event_thresholds""")
+                 UNION ALL SELECT 'gold_feed_dropouts', COUNT(*) FROM gold_feed_dropouts""")
     show(con, "SELECT event_year, COUNT(*) FROM gold_outage_events GROUP BY 1 ORDER BY 1")
     show(con, "SELECT dropout_year, COUNT(*) FROM gold_feed_dropouts GROUP BY 1 ORDER BY 1")
     show(con, """SELECT event_id, CAST(ROUND(customer_hours_lost) AS BIGINT) ch FROM gold_outage_events
                  ORDER BY customer_hours_lost DESC LIMIT 10""")
+    show(con, "SELECT COUNT_IF(peak_floor_applied) AS floored FROM dim_county_customers")
 
     print("\n=== Gold coverage (D22) ===")
     run_file(con, SQL / "03_gold_coverage.sql")
     show(con, """SELECT state_abbr, eaglei_counties, total_counties, ROUND(customer_coverage, 3) AS coverage,
-                        ranking_eligible, ROUND(calibration_factor, 3) AS factor, coverage_note
+                        ranking_eligible, ROUND(calibration_factor, 3) AS factor
                  FROM gold_state_coverage
-                 WHERE customer_coverage < 0.95 OR coverage_note IS NOT NULL OR calibration_factor > 1
+                 WHERE customer_coverage < 0.95 OR calibration_factor > 1
                  ORDER BY customer_coverage""")
     check("53 states and territories in gold_state_coverage", one(con, "SELECT COUNT(*) FROM gold_state_coverage") == 53)
     print("  footnoted (below 70%):", con.execute("SELECT state_abbr FROM gold_state_coverage WHERE NOT ranking_eligible").fetchall())

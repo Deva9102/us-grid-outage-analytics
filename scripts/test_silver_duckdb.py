@@ -91,84 +91,42 @@ def bronze_sources(con: duckdb.DuckDBPyConnection) -> None:
         con.execute(f"CREATE OR REPLACE VIEW {name} AS SELECT * FROM read_csv('{(ref / file).as_posix()}', all_varchar = true)")
 
 
-DIM_SQL = """
-CREATE OR REPLACE TABLE dim_county_customers AS
-WITH
-eaglei_counties AS (
-    SELECT LPAD(TRIM(fips_code), 5, '0') AS fips_code FROM bronze_eaglei_2022
-    UNION
-    SELECT LPAD(TRIM(fips_code), 5, '0') FROM bronze_eaglei_2023
-    UNION
-    SELECT LPAD(TRIM(fips_code), 5, '0') FROM bronze_eaglei_2024
-),
-totals_2024 AS (
-    SELECT LPAD(TRIM(fips_code), 5, '0') AS fips_code,
-           MAX(TRY_CAST(total_customers AS BIGINT)) AS total_customers_2024
-    FROM bronze_eaglei_2024
-    GROUP BY 1
-),
-mcc AS (
-    SELECT LPAD(TRIM(County_FIPS), 5, '0') AS fips_code,
-           TRY_CAST(Customers AS BIGINT) AS mcc_customers
-    FROM bronze_eaglei_mcc
-    WHERE regexp_full_match(TRIM(County_FIPS), '[0-9]+')
-),
-compared AS (
-    SELECT c.fips_code, t.total_customers_2024, m.mcc_customers,
-           COALESCE(GREATEST(t.total_customers_2024, m.mcc_customers)
-                    > 2 * LEAST(t.total_customers_2024, m.mcc_customers), FALSE) AS is_mismatch
-    FROM eaglei_counties AS c
-    LEFT JOIN totals_2024 AS t ON t.fips_code = c.fips_code
-    LEFT JOIN mcc         AS m ON m.fips_code = c.fips_code
-),
-d13 AS (
-    SELECT
-        fips_code,
-        CASE WHEN is_mismatch                      THEN GREATEST(total_customers_2024, mcc_customers)
-             WHEN total_customers_2024 IS NOT NULL THEN total_customers_2024
-             ELSE mcc_customers END AS customers,
-        CASE WHEN is_mismatch                      THEN 'max_mcc_2024'
-             WHEN total_customers_2024 IS NOT NULL THEN 'total_customers_2024'
-             WHEN mcc_customers IS NOT NULL        THEN 'mcc' END AS denominator_source,
-        is_mismatch AS denominator_mismatch
-    FROM compared
-),
-state_totals AS (
-    SELECT r.state_abbr, SUM(d.customers) AS d13_customers
-    FROM d13 AS d INNER JOIN bronze_state_regions AS r ON r.state_fips = LEFT(d.fips_code, 2)
-    GROUP BY r.state_abbr
-),
-factors AS (
-    SELECT s.state_abbr,
-           CASE WHEN s.d13_customers > 1.25 * e.customers THEN s.d13_customers / e.customers ELSE 1.0 END AS calibration_factor
-    FROM state_totals AS s
-    LEFT JOIN silver_eia_state_customers AS e ON e.state_abbr = s.state_abbr AND e.data_year = 2024
-)
-SELECT
-    d.fips_code,
-    CAST(ROUND(d.customers / COALESCE(f.calibration_factor, 1.0)) AS BIGINT) AS customers,
-    d.denominator_source,
-    d.denominator_mismatch,
-    CAST(COALESCE(f.calibration_factor, 1.0) AS DOUBLE) AS calibration_factor
-FROM d13 AS d
-LEFT JOIN bronze_state_regions AS r ON r.state_fips = LEFT(d.fips_code, 2)
-LEFT JOIN factors AS f ON f.state_abbr = r.state_abbr
-"""
-
-# D13 only (no D21 calibration): used to measure the calibration's effect.
-DIM_UNCALIBRATED_SQL = DIM_SQL.replace(
-    "CASE WHEN s.d13_customers > 1.25 * e.customers THEN s.d13_customers / e.customers ELSE 1.0 END",
-    "1.0",
-)
+D21_SCALING = "CASE WHEN s.d13_customers > 1.25 * e.customers THEN s.d13_customers / e.customers ELSE 1.0 END"
+D35_FLOOR = "COALESCE(p.peak_customers_out, 0)"
 
 
-def build_dim(con: duckdb.DuckDBPyConnection, calibrated: bool = True) -> None:
+def dim_sql(mode: str = "d35") -> str:
+    """dim_county_customers exactly as in 02_silver.sql, translated to DuckDB.
+
+    mode:
+        d35  the pipeline: D21 state calibration with the D35 peak floor
+        d21  D21 uniform scaling only (every floor set to 0)
+        d13  no calibration (every state factor set to 1.0)
+    """
+    import re
+
+    import sql_dialect
+
+    text = (REPO_ROOT / "sql" / "databricks" / "02_silver.sql").read_text()
+    query = re.search(r"^INSERT OVERWRITE dim_county_customers\n(.*?);\s*$", text, re.S | re.M).group(1)
+    if mode == "d13":
+        assert query.count(D21_SCALING) == 1
+        query = query.replace(D21_SCALING, "1.0")
+    elif mode == "d21":
+        assert query.count(D35_FLOOR) == 3
+        query = query.replace(D35_FLOOR, "0")
+    elif mode != "d35":
+        raise ValueError(mode)
+    return "CREATE OR REPLACE TABLE dim_county_customers AS " + sql_dialect.to_duckdb(query)
+
+
+def build_dim(con: duckdb.DuckDBPyConnection, mode: str = "d35") -> None:
     """dim_county_customers as in 02_silver.sql. Needs silver_eia_state_customers (D21)."""
     import sql_dialect
 
     stmts = dict(sql_dialect.table_statements(REPO_ROOT / "sql" / "databricks" / "02_silver_sources.sql"))
     con.execute(f"CREATE OR REPLACE TABLE silver_eia_state_customers AS {stmts['silver_eia_state_customers']}")
-    con.execute(DIM_SQL if calibrated else DIM_UNCALIBRATED_SQL)
+    con.execute(dim_sql(mode))
 
 SILVER_STEPS = [
     ("unioned", "D2 rename sum -> customers_out, union years", """

@@ -117,6 +117,7 @@ def _rewrite_all(sql: str) -> str:
 
 
 def to_duckdb(sql: str) -> str:
+    sql = re.sub(r"`(\w+)`", r'"\1"', sql)  # backtick identifiers -> double quotes
     return _rewrite_all(sql)
 
 
