@@ -50,7 +50,8 @@ RAW = REPO_ROOT / "data" / "raw"
 SQL_DIR = REPO_ROOT / "sql" / "databricks"
 # Run order (D26): files are numbered by layer; within a layer, sources before dependants.
 SQL_FILES = ["01_bronze.sql", "01_bronze_sources.sql", "02_silver_sources.sql", "02_silver.sql",
-             "03_gold_events.sql", "03_gold_coverage.sql"]
+             "03_gold_events.sql", "03_gold_coverage.sql", "03_gold_storm_match.sql", "03_gold_reliability.sql",
+             "03_gold_oe417_check.sql"]
 CATALOG, SCHEMA = "workspace", "outages"
 VOLUME = "/Volumes/workspace/outages/raw"
 YEARS = (2022, 2023, 2024)
@@ -88,6 +89,13 @@ EXPECTED_COUNTS = {
     "gold_feed_dropouts": 19_190,
     "gold_outage_events": 446_261,
     "gold_state_coverage": 53,
+    "bronze_storm_event_severity": 54,
+    "gold_event_storm_match": 446_261,
+    "gold_county_reliability": 9_189,
+    "gold_state_reliability": 159,
+    "gold_utility_reliability": 2_204,
+    "gold_utility_reliability_other": 704,
+    "gold_oe417_check": 738,
 }
 EXPECTED_TOP10 = [
     ("48201-00250", 135_547_967),
@@ -116,6 +124,11 @@ EXPECTED_DETAIL = {
     "reliability rows by standard (D32)": [("IEEE 1366", "2204"), ("other", "704")],
     "OE-417 incidents per year (D33)": [("2022", "390"), ("2023", "348")],
     "states below 70% coverage (D22)": [("0",)],
+    "storm-matched events per year (D37)": [("2022", "14566"), ("2023", "15631"), ("2024", "15262")],
+    "rank 1 state per year (D38)": [("2022", "PR"), ("2023", "VI"), ("2024", "VI")],
+    "ranked counties per year (D38)": [("2022", "3020"), ("2023", "3020"), ("2024", "3020")],
+    "utility rows flagged as source errors (D39)": [("2023", "54913")],
+    "OE-417 check status (D40)": [("matched", "180"), ("no county", "185"), ("no time", "70"), ("not matched", "303")],
 }
 DETAIL_SQL = {
     "feed gaps per year (D3)":
@@ -146,6 +159,17 @@ DETAIL_SQL = {
         "SELECT CAST(report_year AS STRING), CAST(COUNT(*) AS STRING) FROM silver_oe417 GROUP BY 1 ORDER BY 1",
     "states below 70% coverage (D22)":
         "SELECT CAST(COUNT_IF(NOT ranking_eligible) AS STRING) FROM gold_state_coverage",
+    "storm-matched events per year (D37)":
+        "SELECT CAST(event_year AS STRING), CAST(COUNT_IF(storm_type <> 'unmatched') AS STRING) "
+        "FROM gold_event_storm_match GROUP BY 1 ORDER BY 1",
+    "rank 1 state per year (D38)":
+        "SELECT CAST(year AS STRING), state_abbr FROM gold_state_reliability WHERE national_rank = 1 ORDER BY 1",
+    "ranked counties per year (D38)":
+        "SELECT CAST(year AS STRING), CAST(COUNT_IF(ranking_eligible) AS STRING) FROM gold_county_reliability GROUP BY 1 ORDER BY 1",
+    "utility rows flagged as source errors (D39)":
+        "SELECT CAST(data_year AS STRING), utility_number FROM gold_utility_reliability WHERE data_quality_flag IS NOT NULL ORDER BY 1",
+    "OE-417 check status (D40)":
+        "SELECT match_status, CAST(COUNT(*) AS STRING) FROM gold_oe417_check GROUP BY 1 ORDER BY 1",
 }
 
 FORBIDDEN = re.compile(r"\b(DROP|ALTER|TRUNCATE|DELETE|GRANT|REVOKE)\b", re.I)
@@ -324,7 +348,8 @@ def upload_list() -> list[tuple[Path, str]]:
     for name in ("MCC.csv", "coverage_history.csv", "DQI.csv"):
         items.append((RAW / "eaglei" / "metadata" / name, f"{VOLUME}/eaglei/metadata/{name}"))
     ref = REPO_ROOT / "data" / "reference"
-    for name in ("state_regions.csv", "noaa_state_codes.csv", "oe417_event_types.csv", "state_time_zones.csv"):
+    for name in ("state_regions.csv", "noaa_state_codes.csv", "oe417_event_types.csv", "state_time_zones.csv",
+                 "storm_event_severity.csv"):
         items.append((ref / name, f"{VOLUME}/reference/{name}"))
     for p in sorted((RAW / "noaa_storm_events").rglob("StormEvents_details-*.csv.gz")):
         items.append((p, f"{VOLUME}/noaa_storm_events/{p.parent.name}/{p.name}"))
