@@ -108,6 +108,7 @@ REWRITES = [
     ("cardinality", lambda a: f"len({a[0]})"),
     ("element_at", lambda a: f"list_extract({a[0]}, {a[1]})"),
     ("array_sort", lambda a: f"list_sort({a[0]})"),
+    ("raise_error", lambda a: f"error({a[0]})"),
     ("to_utc_timestamp", lambda a: f"CAST(timezone({a[1]}, {a[0]}) AS TIMESTAMP)"),
 ]
 

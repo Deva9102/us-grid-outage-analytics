@@ -6,7 +6,8 @@ ENGINE  ?= databricks
 DUCKDB_FILE ?=
 DUCKDB_ARG := $(if $(DUCKDB_FILE),--duckdb-file $(DUCKDB_FILE),)
 
-.PHONY: help setup download profile test test-slow lint ci fixture pipeline quality export all clean
+.PHONY: help setup download profile test test-slow lint ci fixture pipeline quality export all clean \
+        cli job-render job-validate job-deploy job-run
 
 help:
 	@echo "make setup      install the uv environment and validate config/pipeline.yml"
@@ -20,6 +21,10 @@ help:
 	@echo "make pipeline   convert, upload, run all SQL on Databricks with quality gates, verify"
 	@echo "make quality    run every quality check (ENGINE=databricks|duckdb, DUCKDB_FILE=path)"
 	@echo "make export     write Gold tables to data/gold_exports/ as CSV for Power BI"
+	@echo "make cli        install the pinned Databricks CLI into .tools/ (no global install)"
+	@echo "make job-render render the job SQL into build/databricks/ from config/pipeline.yml"
+	@echo "make job-deploy render, validate and deploy the Databricks Job (databricks.yml)"
+	@echo "make job-run    run the deployed job once and wait for it (TASK=<key> re-runs one task)"
 	@echo "make all        setup, download, test, pipeline, quality, export"
 	@echo "make clean      remove logs and Python caches (raw data is kept)"
 
@@ -65,6 +70,24 @@ quality:
 
 export:
 	$(PY) scripts/export_gold.py --engine $(ENGINE) $(DUCKDB_ARG)
+
+# Databricks Job via an Asset Bundle (D54); see docs/runbook.md.
+DBX := $(PY) scripts/databricks_cli.py
+
+cli:
+	$(PY) scripts/install_databricks_cli.py
+
+job-render:
+	$(PY) scripts/render_job_sql.py
+
+job-validate: job-render
+	$(DBX) bundle validate
+
+job-deploy: job-validate
+	$(DBX) bundle deploy
+
+job-run:
+	$(PY) scripts/job_run.py $(if $(TASK),--task $(TASK),)
 
 all: setup download test pipeline quality export
 

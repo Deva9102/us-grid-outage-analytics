@@ -43,7 +43,7 @@ SKIPPED = re.compile(r"^\s*(USE|SET|CREATE\s+SCHEMA|CREATE\s+VOLUME)\b", re.I)
 COMMENT_CLAUSE = re.compile(r"\s+COMMENT\s+'(?:[^']|'')*'", re.I)
 PARTITION_CLAUSE = re.compile(r"\s+PARTITIONED\s+BY\s*\([^)]*\)", re.I)
 CTAS = re.compile(r"^CREATE OR REPLACE TABLE (\w+)\s+COMMENT\s+'(?:[^']|'')*'\s+AS\s+(.*)$", re.S | re.I)
-DDL = re.compile(r"^CREATE OR REPLACE TABLE (\w+)\s*\(", re.I)
+DDL = re.compile(r"^CREATE\s+(?:OR\s+REPLACE\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)\s*\(", re.I)
 INSERT_OVERWRITE = re.compile(r"^INSERT OVERWRITE (\w+)\s+(.*)$", re.S | re.I)
 READ_FILES = re.compile(r"\bREAD_FILES\s*\(", re.I)
 OPTION = re.compile(r"(\w+)\s*=>\s*('(?:[^']|'')*'|\w+)", re.I)
@@ -135,8 +135,13 @@ def file_statements(name: str, overrides: dict | None = None) -> list[str]:
 
 def run_file(con, name: str, root: Path, overrides: dict | None = None, only: set[str] | None = None) -> list[str]:
     """Run one SQL file; returns the tables it created. only limits it to some tables."""
+    return run_statements(con, file_statements(name, overrides), root, name, only)
+
+
+def run_statements(con, statements: list[str], root: Path, label: str, only: set[str] | None = None) -> list[str]:
+    """Run rendered Databricks statements in DuckDB; returns the tables they created."""
     created = []
-    for stmt in file_statements(name, overrides):
+    for stmt in statements:
         target = re.match(r"^(?:CREATE OR REPLACE TABLE|INSERT OVERWRITE)\s+(\w+)", strip_comments(stmt), re.I)
         if only is not None and (target is None or target.group(1) not in only):
             continue
@@ -144,7 +149,7 @@ def run_file(con, name: str, root: Path, overrides: dict | None = None, only: se
             try:
                 con.execute(sql).fetchall()
             except duckdb.Error as e:
-                raise RuntimeError(f"{name}: {e}\n--- statement ---\n{sql[:2000]}") from e
+                raise RuntimeError(f"{label}: {e}\n--- statement ---\n{sql[:2000]}") from e
         if target and target.group(1) not in created:
             created.append(target.group(1))
     return created

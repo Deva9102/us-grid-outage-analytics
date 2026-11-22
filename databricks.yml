@@ -1,0 +1,158 @@
+# Databricks Asset Bundle: the pipeline as one Databricks Job of SQL tasks (D54).
+#
+# The SQL comes from build/databricks/, rendered from sql/databricks/ and config/pipeline.yml by
+# scripts/render_job_sql.py; run "make job-deploy", which renders first. See docs/runbook.md.
+# The raw files must already be in the volume (make pipeline, or its convert and upload steps).
+#
+# warehouse_id is set from DATABRICKS_HTTP_PATH in .env by scripts/databricks_cli.py.
+
+bundle:
+  name: us_grid_outage_analytics
+
+variables:
+  warehouse_id:
+    description: SQL warehouse that runs every task (from DATABRICKS_HTTP_PATH)
+
+# Only the rendered SQL is uploaded. build/ is gitignored, so it must be included explicitly.
+sync:
+  paths:
+    - build/databricks
+  include:
+    - build/databricks/*.sql
+
+# One target. Not development mode: that renames the job per user and forces schedules paused,
+# so pause_status below would not be the single switch.
+targets:
+  dev:
+    default: true
+
+resources:
+  jobs:
+    outage_pipeline:
+      name: us_grid_outage_pipeline
+      description: >-
+        Bronze, Silver and Gold of the US power outage pipeline on the SQL warehouse, each step
+        followed by its quality gate (D48, D54). A failed gate fails its task and skips the rest.
+      max_concurrent_runs: 1
+      timeout_seconds: 7200
+
+      # Daily at 06:00 UTC, PAUSED to protect the Free Edition quota. To enable it, change
+      # pause_status to UNPAUSED and run "make job-deploy" (or resume it in the Jobs UI).
+      schedule:
+        quartz_cron_expression: "0 0 6 * * ?"
+        timezone_id: UTC
+        pause_status: PAUSED
+
+      # Email on failure (example, disabled):
+      # email_notifications:
+      #   on_failure:
+      #     - you@example.com
+
+      tasks:
+        - task_key: bronze
+          max_retries: 1
+          min_retry_interval_millis: 60000
+          sql_task:
+            warehouse_id: ${var.warehouse_id}
+            file:
+              path: ./build/databricks/bronze.sql
+              source: WORKSPACE
+
+        - task_key: bronze_gate
+          depends_on:
+            - task_key: bronze
+          max_retries: 1
+          min_retry_interval_millis: 60000
+          sql_task:
+            warehouse_id: ${var.warehouse_id}
+            file:
+              path: ./build/databricks/bronze_gate.sql
+              source: WORKSPACE
+
+        - task_key: silver
+          depends_on:
+            - task_key: bronze_gate
+          max_retries: 1
+          min_retry_interval_millis: 60000
+          sql_task:
+            warehouse_id: ${var.warehouse_id}
+            file:
+              path: ./build/databricks/silver.sql
+              source: WORKSPACE
+
+        - task_key: silver_gate
+          depends_on:
+            - task_key: silver
+          max_retries: 1
+          min_retry_interval_millis: 60000
+          sql_task:
+            warehouse_id: ${var.warehouse_id}
+            file:
+              path: ./build/databricks/silver_gate.sql
+              source: WORKSPACE
+
+        - task_key: gold_events
+          depends_on:
+            - task_key: silver_gate
+          max_retries: 1
+          min_retry_interval_millis: 60000
+          sql_task:
+            warehouse_id: ${var.warehouse_id}
+            file:
+              path: ./build/databricks/gold_events.sql
+              source: WORKSPACE
+
+        - task_key: gold_events_gate
+          depends_on:
+            - task_key: gold_events
+          max_retries: 1
+          min_retry_interval_millis: 60000
+          sql_task:
+            warehouse_id: ${var.warehouse_id}
+            file:
+              path: ./build/databricks/gold_events_gate.sql
+              source: WORKSPACE
+
+        - task_key: gold_storm_match
+          depends_on:
+            - task_key: gold_events_gate
+          max_retries: 1
+          min_retry_interval_millis: 60000
+          sql_task:
+            warehouse_id: ${var.warehouse_id}
+            file:
+              path: ./build/databricks/gold_storm_match.sql
+              source: WORKSPACE
+
+        - task_key: gold_storm_match_gate
+          depends_on:
+            - task_key: gold_storm_match
+          max_retries: 1
+          min_retry_interval_millis: 60000
+          sql_task:
+            warehouse_id: ${var.warehouse_id}
+            file:
+              path: ./build/databricks/gold_storm_match_gate.sql
+              source: WORKSPACE
+
+        - task_key: gold_reliability
+          depends_on:
+            - task_key: gold_storm_match_gate
+          max_retries: 1
+          min_retry_interval_millis: 60000
+          sql_task:
+            warehouse_id: ${var.warehouse_id}
+            file:
+              path: ./build/databricks/gold_reliability.sql
+              source: WORKSPACE
+
+        - task_key: gold_reliability_gate
+          depends_on:
+            - task_key: gold_reliability
+          max_retries: 1
+          min_retry_interval_millis: 60000
+          sql_task:
+            warehouse_id: ${var.warehouse_id}
+            file:
+              path: ./build/databricks/gold_reliability_gate.sql
+              source: WORKSPACE

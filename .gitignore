@@ -11,3 +11,7 @@ data/gold_exports/*.csv
 .tmp/
 .pytest_cache/
 .ruff_cache/
+# Project-local tools (Databricks CLI, D54) and rendered bundle SQL
+.tools/
+build/
+.databricks/
