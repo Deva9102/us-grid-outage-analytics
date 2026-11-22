@@ -55,6 +55,7 @@ Row counts come from DuckDB runs against the raw EAGLE-I files
 | D47 | Every tunable value in config/pipeline.yml; SQL reads it through placeholders | All | 2026-11-21 |
 | D48 | Quality gates after each layer; results in gold_quality_results; a failed check stops the run | All | 2026-11-21 |
 | D49 | Step logging to logs/, Makefile targets, CSV export split by year above 50 MB | All | 2026-11-21 |
+| D50 | Gold CSV exports not committed; row counts must match expected exactly | All | 2026-11-21 |
 
 ---
 
@@ -1809,7 +1810,8 @@ reproduce every row count and the top 10 events.
 
 **What:** `sql/databricks/90_quality_checks.sql` holds 109 checks in three sections (Bronze, Silver,
 Gold). Each statement returns `layer, check_name, observed, expected, passed`. The checks:
-- row counts of all 43 tables within 1% of the verified run (`quality.row_count_tolerance`);
+- row counts of all 43 tables within 1% of the verified run (`quality.row_count_tolerance`; exact
+  match since D50);
 - no duplicate or NULL primary keys in every Silver and Gold table;
 - valid ranges: `customers_out >= 0`, 5-digit FIPS, readings on the 15-minute grid, years in the
   config, positive durations and reading counts, capped customer-hours <= raw, shares and coverage
@@ -1847,12 +1849,27 @@ failed its check.
 `setup`, `download`, `profile`, `test`, `pipeline`, `quality`, `export`, `all` and `clean` (README,
 Setup). `scripts/export_gold.py` writes the tables in `export.tables` to `data/gold_exports/`; a table
 whose CSV would exceed 50 MB is written as one file per year (`gold_outage_events` and
-`gold_event_storm_match` are about 33 MB and 18 MB per year).
+`gold_event_storm_match` are about 33 MB and 18 MB per year). The CSVs are not committed (D50).
 
 **Why:** One command rebuilds everything from a fresh clone, and the logs show where time goes and
 what each step produced.
 
 **Rows affected:** none.
+
+## D50. Gold exports stay out of git; row counts must match exactly
+
+**What:** (1) I do not commit the Gold CSV exports. A full export is about 190 MB, most of it
+`gold_outage_events` and `gold_event_storm_match`, which would bloat the repo even with every file
+under 50 MB. `data/gold_exports/*.csv` is gitignored. Later, the large tables will be exported as
+Parquet and attached to a GitHub Release, and only small summary tables will be committed.
+(2) `quality.row_count_tolerance` is 0: every table's row count must equal `quality.expected_rows`.
+
+**Why:** Release assets keep the repo small while still giving Power BI a download. The expected
+row counts are a contract, not an estimate: the pipeline is deterministic, so any difference means
+the data or logic changed, and I update the expected counts deliberately when that happens. A 1%
+tolerance would have let more than 250,000 rows of one Bronze year go missing silently.
+
+**Rows affected:** none; all 109 checks still pass with exact counts.
 
 ---
 
