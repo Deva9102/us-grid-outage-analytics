@@ -23,9 +23,9 @@ import argparse
 import csv
 import re
 import sys
-from datetime import datetime, timezone
+from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Callable
 
 import pipeline_config
 from pipeline_log import LOG_DIR, RunLog
@@ -42,8 +42,12 @@ class QualityFailed(Exception):
     """One or more quality checks failed."""
 
 
-def statements_by_layer() -> dict[str, list[str]]:
-    """Rendered statements of 90_quality_checks.sql grouped by their -- @layer section."""
+def statements_by_layer(overrides: dict | None = None) -> dict[str, list[str]]:
+    """Rendered statements of 90_quality_checks.sql grouped by their -- @layer section.
+
+    overrides replaces configuration values for this run, e.g. the expected row counts of the test
+    fixture (tests/test_quality_gates.py, D51).
+    """
     from run_databricks import split_statements
 
     text = CHECKS_SQL.read_text()
@@ -54,7 +58,7 @@ def statements_by_layer() -> dict[str, list[str]]:
     out: dict[str, list[str]] = {}
     for k, m in enumerate(marks):
         end = marks[k + 1].start() if k + 1 < len(marks) else len(text)
-        out[m.group(1)] = split_statements(pipeline_config.render(text[m.end():end]))
+        out[m.group(1)] = split_statements(pipeline_config.render(text[m.end():end], overrides))
     return out
 
 
@@ -66,9 +70,10 @@ def _to_row(raw) -> Row:
             str(expected), bool(passed))
 
 
-def run_layers(execute: Callable[[str], list], layers, log: RunLog | None = None) -> list[Row]:
+def run_layers(execute: Callable[[str], list], layers, log: RunLog | None = None,
+               overrides: dict | None = None) -> list[Row]:
     """Run the checks of the given layers; execute(sql) returns result rows."""
-    sections = statements_by_layer()
+    sections = statements_by_layer(overrides)
     rows: list[Row] = []
     for layer in layers:
         layer_rows: list[Row] = []
@@ -193,7 +198,7 @@ def main() -> int:
         print(f"--layers must be from {LAYERS}", file=sys.stderr)
         return 2
     log = RunLog(f"quality_{args.engine}")
-    run_ts = datetime.now(timezone.utc).replace(microsecond=0, tzinfo=None)
+    run_ts = datetime.now(UTC).replace(microsecond=0, tzinfo=None)
     try:
         if args.engine == "duckdb":
             con = duckdb_connection(args.duckdb_file, log)

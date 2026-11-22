@@ -15,6 +15,7 @@ small set of rewrites, so local tests exercise the real code:
     element_at(x, i)                  -> list_extract(x, i)
     array_sort(x)                     -> list_sort(x)
     to_utc_timestamp(x, tz)           -> CAST(timezone(tz, x) AS TIMESTAMP)   (session TimeZone = UTC)
+    x RLIKE 'p'                       -> regexp_matches(x, 'p')
 
 Statements must have the form  CREATE OR REPLACE TABLE <name> COMMENT '...' AS <query>;
 Configuration placeholders ${section.key} are substituted from config/pipeline.yml first (D47).
@@ -117,8 +118,12 @@ def _rewrite_all(sql: str) -> str:
     return sql
 
 
+RLIKE = re.compile(r"([\w.]+)\s+RLIKE\s+('(?:[^']|'')*')", re.I)
+
+
 def to_duckdb(sql: str) -> str:
     sql = re.sub(r"`(\w+)`", r'"\1"', sql)  # backtick identifiers -> double quotes
+    sql = RLIKE.sub(r"regexp_matches(\1, \2)", sql)
     return _rewrite_all(sql)
 
 
