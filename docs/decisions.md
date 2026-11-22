@@ -1874,16 +1874,16 @@ tolerance would have let more than 250,000 rows of one Bronze year go missing si
 ## D51. Continuous integration: a real-data test fixture, pytest, linting
 
 **What:**
-- **Fixture.** `tests/fixtures/` holds a 391 KB sample of real rows, copied unchanged from
+- **Fixture.** `tests/fixtures/` holds a 392 KB sample of real rows, copied unchanged from
   `data/raw/` by `scripts/build_test_fixture.py`: EAGLE-I readings of 13 counties in five windows
   (the Harris 2024-07-10 dropout, the 2024-05-24 nationwide feed gap, the 2023-03-22 20:31 run,
   Rich UT's capped readings, a Harris event matched by OE-417), one reading each for Kalawao HI and
   Norton city VA, and the matching MCC, NOAA, NWS zone, EIA-861 and OE-417 rows. All five Hawaii
   counties are included so the D21 calibration and Kauai's D35 floor equal the full-data values;
   Utah's five largest counties hold 75% of its EIA customers so Utah is ranked (D22). Sources are
-  credited in `tests/fixtures/README.md` (EAGLE-I is CC BY 4.0). One NOAA hail event (Honolulu,
-  2023-03-23) is left out because its narrative contains a word on the repository's commit word
-  list; it overlaps no fixture outage event.
+  credited in `tests/fixtures/README.md` (EAGLE-I is CC BY 4.0). The fixture keeps every selected
+  NOAA event with its narrative unchanged; the commit word scan treats files copied from public
+  sources as data (see the hygiene scope below).
 - **Real SQL in DuckDB.** `scripts/duckdb_pipeline.py` renders every file in the Databricks run
   order from `config/pipeline.yml`, splits it exactly as `run_databricks.py` does and runs each
   statement in DuckDB: session statements are skipped, Bronze `read_files()` reads the matching
@@ -1912,6 +1912,10 @@ tolerance would have let more than 250,000 rows of one Bronze year go missing si
   replaced by the grouped expression, qualified column references, one self-alias removed, two
   table comments shortened. Python fixes are imports, `UTC`, explicit `zip(strict=False)`, files
   opened in context managers, one unused variable, and long lines wrapped.
+- **Hygiene scope.** The pre-commit word scan checks code, SQL, docs, config, the README and commit
+  messages for every listed word. Data files copied unchanged from public sources (the
+  `tests/fixtures/` data files and the `data/reference/` CSVs) are checked only for tool and vendor
+  names, not for ordinary English words that appear in source text such as NOAA storm narratives.
 - **CI.** `.github/workflows/ci.yml` runs ruff, sqlfluff and the fast pytest suite on every push
   and pull request with uv; it needs no secrets. `make ci` runs the same checks locally.
 
@@ -1923,11 +1927,37 @@ results visible.
 **Rows affected:** none. A full DuckDB rebuild with the linted SQL gives identical contents for all
 27 tables compared (every row and column) and all 109 quality checks still pass.
 
-Found while building the fixture (not changed, see Q9): `gold_state_coverage` computes
+Found while building the fixture (resolved in D52): `gold_state_coverage` computes
 `LEAST(eaglei_customers / eia_customers, 1.0)`. `LEAST` skips NULLs in both Spark and DuckDB, so a
 state with no EIA row or no EAGLE-I denominator gets coverage 1.0 and is ranked. In the full data
 every state has both, so no result changes today; in the fixture, Virginia (one county without a
 denominator) is ranked with no rate.
+
+---
+
+## D52. States with unknown coverage are not ranked (resolves Q9)
+
+**What:** `gold_state_coverage` now handles missing inputs explicitly. Coverage is unknown (NULL)
+when the state has no EIA-861 total for the calibration year, an EIA total of 0, or no county with
+a denominator (`eaglei_customers` is NULL). A new column `coverage_status` reads
+`coverage_unknown`, `below_minimum` or `covered`; only `covered` is ranking-eligible.
+- `gold_state_reliability` gets a `footnote_reason` column: `coverage_unknown`, or the D22 reason
+  for a state below the coverage minimum.
+- County-years in a state with unknown coverage get the county footnote `coverage_unknown`, after
+  D9 and D11 and before D22. `gold_unit_reliability` carries `state_coverage_status` for this.
+- Missing denominators of individual counties in an otherwise covered state stay a county-level
+  footnote (D9); they do not make the state's coverage unknown.
+- Two quality gates: no ranking-eligible state with unknown coverage (and `coverage_status`
+  consistent with `customer_coverage`), and no ranked state with unknown coverage. 111 checks now.
+
+**Why:** The old expression `LEAST(eaglei / eia, 1.0)` returned 1.0 when either side was NULL,
+because `LEAST` skips NULLs in Spark and DuckDB. A state missing its EIA row, or with no county
+denominator, was therefore treated as fully covered and ranked with no rate.
+
+**Rows affected:** none in the full data. Every state and territory with EAGLE-I counties has an EIA
+total and at least one denominator, so a full DuckDB rebuild gives the same state and county ranks
+and footnotes as before; the only differences are the new columns. In the fixture, Virginia (one
+county, Norton city, with no denominator) is no longer ranked and is footnoted `coverage_unknown`.
 
 ---
 
@@ -1947,5 +1977,4 @@ Q1 is resolved in D9; Q2 (fixed 100-customer threshold) is resolved in D18 and D
 
 **Q8.** Resolved in D43.
 
-**Q9.** Should `gold_state_coverage` treat a missing EIA total or a state with no EAGLE-I
-denominator as unknown coverage (not ranked) instead of 1.0? No current result changes (D51).
+**Q9.** Resolved in D52.
