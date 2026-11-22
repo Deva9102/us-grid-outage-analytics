@@ -1,0 +1,4 @@
+source_name,sheet_name,row_number,col_01,col_02,col_03,col_04,col_05,col_06,col_07,col_08,col_09,col_10,col_11,col_12,col_13,col_14,col_15
+OE417_2023.xls,Sheet1,1,,"OE-417 Electric Emergency and Disturbance (OE-417) Events, 2023",,,,,,,,,,,,,
+OE417_2023.xls,Sheet1,2,Event Month,Date Event Began,Time Event Began,Date of Restoration,Time of Restoration,Area Affected,NERC Region,Alert Criteria,Event Type,Demand Loss (MW),Number of Customers Affected,,,,
+OE417_2023.xls,Sheet1,206,August,,07:00:00,2023-07-07,08:00:00,California: San Diego County;,WECC,Damage or destruction of its Facility that results from actual or suspected intentional human action.,- Vandalism,0,0,,,,

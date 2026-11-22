@@ -1,0 +1,46 @@
+# Row counts of every table built from tests/fixtures/ (D51). The fast pytest suite asserts these
+# exactly and passes them to the quality gates in place of quality.expected_rows.
+# Regenerate only after a reviewed change to the fixture or the SQL.
+bronze_eaglei_2022: 624
+bronze_eaglei_2023: 195
+bronze_eaglei_2024: 3965
+bronze_eaglei_mcc: 14
+bronze_state_regions: 53
+bronze_noaa_storm_events: 51
+bronze_nws_zone_county: 261
+bronze_eia861_reliability: 61
+bronze_eia861_sales: 507
+bronze_eia861_service_territory: 18
+bronze_oe417: 8
+bronze_noaa_state_codes: 69
+bronze_oe417_event_types: 43
+bronze_state_time_zones: 53
+bronze_storm_event_severity: 54
+bronze_ranking_exclusions: 0
+silver_eia_state_customers: 9
+silver_utility_reliability: 37
+silver_nws_zone_versions: 6
+silver_nws_zone_county: 261
+silver_storm_event_details: 51
+silver_storm_events: 66
+silver_storm_events_unplaced: 1
+silver_oe417_rows: 4
+silver_oe417_locations: 7
+silver_oe417: 4
+dim_county_customers: 14
+silver_outages: 4784
+gold_collection_runs: 60096
+gold_event_thresholds: 14
+gold_feed_dropouts: 13
+gold_outage_events: 27
+gold_state_coverage: 53
+gold_event_storm_match: 27
+gold_unit_reliability: 28
+gold_county_reliability: 28
+gold_territory_unit_reliability: 0
+gold_county_ranking_footnotes: 11
+gold_state_reliability: 10
+gold_territory_reliability: 0
+gold_utility_reliability: 26
+gold_utility_reliability_other: 11
+gold_oe417_check: 4

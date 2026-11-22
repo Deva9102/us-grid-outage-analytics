@@ -1,0 +1,7 @@
+source_name,sheet_name,row_number,col_01,col_02,col_03,col_04,col_05,col_06,col_07,col_08,col_09,col_10
+Service_Territory_2022.xlsx,Counties_States,1,Data Year,Utility Number,Utility Name,Short Form,State,County,,,,
+Service_Territory_2022.xlsx,Counties_States,2,2022,34,City of Abbeville - (SC),Y,SC,Abbeville,,,,
+Service_Territory_2022.xlsx,Counties_States,3,2022,55,City of Aberdeen - (MS),"",MS,Monroe,,,,
+Service_Territory_2022.xlsx,Counties_Territories,1,Data Year,Utility Number,Utility Name,Short Form,State,County,,,,
+Service_Territory_2022.xlsx,Counties_Territories,2,2022,15497,Puerto Rico Electric Pwr Authority,"",PR,Adjuntas,,,,
+Service_Territory_2022.xlsx,Counties_Territories,3,2022,15497,Puerto Rico Electric Pwr Authority,"",PR,Aguada,,,,

@@ -1,0 +1,6 @@
+source_name,sheet_name,row_number,col_01,col_02,col_03,col_04,col_05,col_06,col_07,col_08,col_09,col_10,col_11,col_12,col_13,col_14,col_15
+OE417_2022.xls,Sheet1,1,OE-417 Electric Emergency and Disturbance Report - Calendar Year 2022,,,,,,,,,,,,,,
+OE417_2022.xls,Sheet1,2,Month,Date Event Began,Time Event Began,Date of Restoration,Time of Restoration,Area Affected,NERC Region,Alert Criteria,Event Type,Demand Loss (MW),Number of Customers Affected,,,,
+OE417_2022.xls,Sheet1,42,February,02/04/2022,18:21:00,02/04/2022,22:00:00,Texas:,TRE,Electrical System Separation (Islanding) where part or parts of a power grid remain(s) operational in an otherwise blacked out area or within the partial failure of an integrated electrical system,Transmission Interruption,Unknown,Unknown,,,,
+OE417_2022.xls,Sheet1,311,October,10/25/2022,01:45:00,10/25/2022,13:50:00,Texas: Harris County;,TRE,"Loss of electric service to more than 50,000 customers for 1 hour or more",System Operations,Unknown,109865,,,,
+OE417_2022.xls,Sheet1,314,October,10/28/2022,14:16:00,10/28/2022,15:00:00,California: Los Angeles County;,WECC,Damage or destruction of its Facility that results from actual or suspected intentional human action.,Vandalism,2,0,,,,

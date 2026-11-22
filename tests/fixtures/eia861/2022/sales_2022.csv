@@ -1,0 +1,16 @@
+source_name,sheet_name,row_number,col_01,col_02,col_03,col_04,col_05,col_06,col_07,col_08,col_09,col_10,col_11,col_12,col_13,col_14,col_15,col_16,col_17,col_18,col_19,col_20,col_21,col_22,col_23,col_24,col_25,col_26,col_27,col_28,col_29,col_30
+Sales_Ult_Cust_2022.xlsx,Decoupled,1,Utility Characteristics,,,,,,Decoupled,,,,Revenue Adjustment Method,,,,,,,,,,,,,,,,,,,
+Sales_Ult_Cust_2022.xlsx,Decoupled,2,Data Year,Utility Number,Utility Name,Ownership,State,BA-Code,Residential,Commercial,Industrial,Transportation,Residential,Commercial,Industrial,Transportation,,,,,,,,,,,,,,,,
+Sales_Ult_Cust_2022.xlsx,Decoupled,3,2022,604,City of Andalusia,Municipal,AL,SOCO,Yes,Yes,Yes,Yes,Proceeding,Proceeding,Proceeding,Proceeding,,,,,,,,,,,,,,,,
+Sales_Ult_Cust_2022.xlsx,States,1,Utility Characteristics,,,,,,,,,RESIDENTIAL,,,COMMERCIAL,,,INDUSTRIAL,,,TRANSPORTATION,,,TOTAL,,,,,,,,
+Sales_Ult_Cust_2022.xlsx,States,2,"",,,,,,,,,Revenues,Sales,Customers,Revenues,Sales,Customers,Revenues,Sales,Customers,Revenues,Sales,Customers,Revenues,Sales,Customers,,,,,,
+Sales_Ult_Cust_2022.xlsx,States,3,Data Year,Utility Number,Utility Name,Part,Service Type,"Data Type
+O = Observed
+I = Imputed",State,Ownership,BA Code,Thousand Dollars,Megawatthours,Count,Thousand Dollars,Megawatthours,Count,Thousand Dollars,Megawatthours,Count,Thousand Dollars,Megawatthours,Count,Thousand Dollars,Megawatthours,Count,,,,,,
+Sales_Ult_Cust_2022.xlsx,States,831,2022,13214,The Narragansett Electric Co,A,Bundled,O,RI,Investor Owned,ISNE,664363.6,2890589,408910,171255.2,1199763,44699,23572.4,98394,1078,.,.,.,859191.2,4188746,454687,,,,,,
+Sales_Ult_Cust_2022.xlsx,States,832,2022,13214,The Narragansett Electric Co,C,Delivery,O,RI,Investor Owned,ISNE,24645.8,204359,33318,213982.5,2494209,14522,42596.8,524829,489,2545.4,22969,1,283770.5,3246366,48330,,,,,,
+Sales_Ult_Cust_2022.xlsx,Territories,1,Utility Characteristics,,,,,,,,,RESIDENTIAL,,,COMMERCIAL,,,INDUSTRIAL,,,TRANSPORTATION,,,TOTAL,,,,,,,,
+Sales_Ult_Cust_2022.xlsx,Territories,2,"",,,,,,,,,Revenues,Sales,Customers,Revenues,Sales,Customers,Revenues,Sales,Customers,Revenues,Sales,Customers,Revenues,Sales,Customers,,,,,,
+Sales_Ult_Cust_2022.xlsx,Territories,3,Data Year,Utility Number,Utility Name,Part,Service Type,"Data Type
+O = Observed
+I = Imputed",State,Ownership,BA Code,Thousand Dollars,Megawatthours,Count,Thousand Dollars,Megawatthours,Count,Thousand Dollars,Megawatthours,Count,Thousand Dollars,Megawatthours,Count,Thousand Dollars,Megawatthours,Count,,,,,,
