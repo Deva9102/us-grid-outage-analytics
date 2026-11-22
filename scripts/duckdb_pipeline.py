@@ -32,7 +32,8 @@ import duckdb
 
 import pipeline_config
 import sql_dialect
-from run_databricks import SQL_FILES, split_statements, strip_comments
+from run_databricks import SQL_FILES
+from sql_split import split_statements, strip_comments
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SQL_DIR = REPO_ROOT / "sql" / "databricks"

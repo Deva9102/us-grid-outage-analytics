@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import argparse
 import math
-import re
 from pathlib import Path
 
 import duckdb
@@ -42,11 +41,9 @@ def gold_statements(share: float | None = None) -> list[tuple[str, str]]:
     """
     overrides = {"events.threshold_share": float(share)} if share is not None else None
     text = pipeline_config.render(GOLD_SQL.read_text(), overrides)
-    pattern = re.compile(
-        r"^CREATE OR REPLACE TABLE (\w+)\s*\nCOMMENT '[^']*'\s*\nAS\s*\n(.*?);\s*$",
-        re.S | re.M,
-    )
-    found = pattern.findall(text)
+    import sql_split
+
+    found = sql_split.table_statements(text)  # D53
     if [name for name, _ in found] != GOLD_TABLES:
         raise SystemExit(f"Unexpected statements in {GOLD_SQL.name}: {[n for n, _ in found]}")
     import sql_dialect

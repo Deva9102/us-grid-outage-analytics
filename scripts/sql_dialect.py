@@ -128,9 +128,9 @@ def to_duckdb(sql: str) -> str:
 
 
 def table_statements(path: Path) -> list[tuple[str, str]]:
-    """(table name, DuckDB query) for each CREATE OR REPLACE TABLE ... AS <query>; in a file."""
+    """(table name, DuckDB query) for each CREATE OR REPLACE TABLE ... AS <query> in a file (D53)."""
     import pipeline_config
+    import sql_split
 
     text = pipeline_config.render(path.read_text())
-    pattern = re.compile(r"^CREATE OR REPLACE TABLE (\w+)\s*\nCOMMENT '(?:[^']|'')*'\s*\nAS\s*\n(.*?);\s*$", re.S | re.M)
-    return [(name, to_duckdb(query)) for name, query in pattern.findall(text)]
+    return [(name, to_duckdb(query)) for name, query in sql_split.table_statements(text)]

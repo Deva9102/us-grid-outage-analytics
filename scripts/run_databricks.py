@@ -55,6 +55,7 @@ from dotenv import load_dotenv
 
 import pipeline_config
 from pipeline_log import RunLog
+from sql_split import split_statements, strip_comments, without_literals
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 RAW = REPO_ROOT / "data" / "raw"
@@ -190,54 +191,6 @@ def connect() -> tuple[WorkspaceClient, str]:
     warehouse_id = os.environ["DATABRICKS_HTTP_PATH"].strip().rstrip("/").split("/")[-1]
     w = WorkspaceClient(host=f"https://{host}", token=os.environ["DATABRICKS_TOKEN"].strip())
     return w, warehouse_id
-
-
-def split_statements(text: str) -> list[str]:
-    """Split SQL on semicolons outside string literals, backticks and -- comments."""
-    statements, buf = [], []
-    i, n = 0, len(text)
-    quote = None
-    while i < n:
-        ch = text[i]
-        if quote:
-            buf.append(ch)
-            if ch == quote:
-                if quote == "'" and i + 1 < n and text[i + 1] == "'":
-                    buf.append("'")
-                    i += 1
-                else:
-                    quote = None
-        elif ch in ("'", "`", '"'):
-            quote = ch
-            buf.append(ch)
-        elif ch == "-" and text.startswith("--", i):
-            j = text.find("\n", i)
-            j = n if j == -1 else j
-            buf.append(text[i:j])
-            i = j
-            continue
-        elif ch == ";":
-            stmt = "".join(buf).strip()
-            if strip_comments(stmt):
-                statements.append(stmt)
-            buf = []
-        else:
-            buf.append(ch)
-        i += 1
-    tail = "".join(buf).strip()
-    if strip_comments(tail):
-        statements.append(tail)
-    return statements
-
-
-def strip_comments(stmt: str) -> str:
-    return "\n".join(line for line in stmt.splitlines() if not line.strip().startswith("--")).strip()
-
-
-def without_literals(stmt: str) -> str:
-    """The statement with string literals and comments removed, for safety checks."""
-    s = re.sub(r"'(?:[^']|'')*'", "''", stmt)
-    return re.sub(r"--[^\n]*", "", s)
 
 
 def check_safe(stmt: str) -> None:

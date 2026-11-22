@@ -29,6 +29,7 @@ from pathlib import Path
 
 import pipeline_config
 from pipeline_log import LOG_DIR, RunLog
+from sql_split import split_statements
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CHECKS_SQL = REPO_ROOT / "sql" / "databricks" / "90_quality_checks.sql"
@@ -48,8 +49,6 @@ def statements_by_layer(overrides: dict | None = None) -> dict[str, list[str]]:
     overrides replaces configuration values for this run, e.g. the expected row counts of the test
     fixture (tests/test_quality_gates.py, D51).
     """
-    from run_databricks import split_statements
-
     text = CHECKS_SQL.read_text()
     marks = list(LAYER_MARK.finditer(text))
     found = [m.group(1) for m in marks]
