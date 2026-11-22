@@ -1871,6 +1871,64 @@ tolerance would have let more than 250,000 rows of one Bronze year go missing si
 
 **Rows affected:** none; all 109 checks still pass with exact counts.
 
+## D51. Continuous integration: a real-data test fixture, pytest, linting
+
+**What:**
+- **Fixture.** `tests/fixtures/` holds a 391 KB sample of real rows, copied unchanged from
+  `data/raw/` by `scripts/build_test_fixture.py`: EAGLE-I readings of 13 counties in five windows
+  (the Harris 2024-07-10 dropout, the 2024-05-24 nationwide feed gap, the 2023-03-22 20:31 run,
+  Rich UT's capped readings, a Harris event matched by OE-417), one reading each for Kalawao HI and
+  Norton city VA, and the matching MCC, NOAA, NWS zone, EIA-861 and OE-417 rows. All five Hawaii
+  counties are included so the D21 calibration and Kauai's D35 floor equal the full-data values;
+  Utah's five largest counties hold 75% of its EIA customers so Utah is ranked (D22). Sources are
+  credited in `tests/fixtures/README.md` (EAGLE-I is CC BY 4.0). One NOAA hail event (Honolulu,
+  2023-03-23) is left out because its narrative contains a word on the repository's commit word
+  list; it overlaps no fixture outage event.
+- **Real SQL in DuckDB.** `scripts/duckdb_pipeline.py` renders every file in the Databricks run
+  order from `config/pipeline.yml`, splits it exactly as `run_databricks.py` does and runs each
+  statement in DuckDB: session statements are skipped, Bronze `read_files()` reads the matching
+  local files with the statement's own path, header, separator, encoding and column names,
+  `INSERT OVERWRITE` becomes `DELETE` + `INSERT`, and queries go through `sql_dialect.py`, which
+  now also translates `RLIKE`. Silver `silver_outages` is therefore tested from `02_silver.sql`
+  itself, not from the hand-written steps of `test_silver_duckdb.py`.
+- **pytest.** `tests/` asserts exact results on the fixture: row counts of all 43 tables
+  (`tests/fixtures/expected_rows.yml`), denominators, D7 flooring, D4 flags, D18 thresholds, the
+  feed gap, all 13 dropouts, all 27 events, storm attribution, coverage, county and state ranks,
+  ranking footnotes (D9, D11, D22, D45), utility ranks with the D39 flag, the OE-417 check, and all
+  109 quality gates (row counts compared with the fixture's counts through a config override).
+  Rules real data never exercises are checked with synthetic rows through the same SQL: D7
+  dedupe and D15 drops, the event boundaries of D3/D4/D17/D18/D19, D41/D42 storm windows, and D36
+  via `calibration.peak_skip_ratio = 0.79`, which leaves Kauai at 26,579, its D21-only value. The
+  full-data scripts run as `@pytest.mark.slow` tests, skipped when `data/raw/` is absent.
+  `scripts/test_config.py` moved into `tests/test_config.py`.
+- **Linting.** ruff (line length 140; rules E, F, W, I, UP, B, SIM) and sqlfluff (Databricks
+  dialect). sqlfluff's placeholder templater fills each `${...}` with its value from
+  `config/pipeline.yml`; `scripts/sqlfluff_config.py` writes those values into `.sqlfluff` and a
+  test fails when they drift. sqlfluff runs with `--ignore-local-config --config .sqlfluff` so it
+  reads no config outside the repo. Layout rules that contradict the house style (aligned columns,
+  one-line count queries, CTE comments above each CTE, AND under WHERE) are excluded and listed
+  with reasons in `.sqlfluff`; every other rule is enforced. Fixes: function names and boolean
+  literals upper case, `UNION` written `UNION DISTINCT`, explicit `ASC`, positional `GROUP BY 1`
+  replaced by the grouped expression, qualified column references, one self-alias removed, two
+  table comments shortened. Python fixes are imports, `UTC`, explicit `zip(strict=False)`, files
+  opened in context managers, one unused variable, and long lines wrapped.
+- **CI.** `.github/workflows/ci.yml` runs ruff, sqlfluff and the fast pytest suite on every push
+  and pull request with uv; it needs no secrets. `make ci` runs the same checks locally.
+
+**Why:** Every change to a SQL rule should be checked before it reaches Databricks, in seconds and
+without the 3.6 GB of raw files. Real rows keep the tests honest about source quirks (unpadded MCC
+FIPS, the 20:31 run, a dropout to 2,323 customers); exact expected values make any change in
+results visible.
+
+**Rows affected:** none. A full DuckDB rebuild with the linted SQL gives identical contents for all
+27 tables compared (every row and column) and all 109 quality checks still pass.
+
+Found while building the fixture (not changed, see Q9): `gold_state_coverage` computes
+`LEAST(eaglei_customers / eia_customers, 1.0)`. `LEAST` skips NULLs in both Spark and DuckDB, so a
+state with no EIA row or no EAGLE-I denominator gets coverage 1.0 and is ranked. In the full data
+every state has both, so no result changes today; in the fixture, Virginia (one county without a
+denominator) is ranked with no rate.
+
 ---
 
 ## Open questions
@@ -1888,3 +1946,6 @@ Q1 is resolved in D9; Q2 (fixed 100-customer threshold) is resolved in D18 and D
 **Q7.** Resolved in D42.
 
 **Q8.** Resolved in D43.
+
+**Q9.** Should `gold_state_coverage` treat a missing EIA total or a state with no EAGLE-I
+denominator as unknown coverage (not ranked) instead of 1.0? No current result changes (D51).
