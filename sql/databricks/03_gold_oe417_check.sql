@@ -33,7 +33,7 @@ candidates AS (
         e.event_id,
         e.fips_code,
         e.peak_customers_out,
-        (unix_seconds(e.event_start) - unix_seconds(o.begin_utc)) / 3600.0 AS start_offset_hours
+        (UNIX_SECONDS(e.event_start) - UNIX_SECONDS(o.begin_utc)) / 3600.0 AS start_offset_hours
     FROM incident_counties AS i
     INNER JOIN silver_oe417 AS o ON o.incident_id = i.incident_id
     INNER JOIN gold_outage_events AS e

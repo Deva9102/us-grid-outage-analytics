@@ -40,7 +40,7 @@ bounds AS (
 ),
 -- One row per 15-minute slot on that grid.
 grid AS (
-    SELECT explode(sequence(first_time, last_time, INTERVAL 15 MINUTES)) AS slot_time
+    SELECT EXPLODE(SEQUENCE(first_time, last_time, INTERVAL 15 MINUTES)) AS slot_time
     FROM bounds
 ),
 -- A slot is collected when at least one county reported in it.
@@ -96,7 +96,7 @@ CROSS JOIN params AS p;
 -- -----------------------------------------------------------------------------
 
 CREATE OR REPLACE TABLE gold_feed_dropouts
-COMMENT 'County feed dropouts: a reading below ${dropouts.drop_below_pct}% of the previous one that recovers to ${dropouts.recovery_pct}% within ${dropouts.recovery_max_minutes} minutes (D19)'
+COMMENT 'Feed dropouts: under ${dropouts.drop_below_pct}% of the prior reading, back to ${dropouts.recovery_pct}% in ${dropouts.recovery_max_minutes} min (D19)'
 AS
 WITH
 -- Every reading with its collected-run position and its county threshold.
@@ -189,7 +189,7 @@ AS
 WITH
 -- Each dropout covers its dropped runs, drop_start_run to recovery_run - 1.
 dropout_runs_all AS (
-    SELECT fips_code, explode(sequence(drop_start_run, recovery_run - 1)) AS run_index
+    SELECT fips_code, EXPLODE(SEQUENCE(drop_start_run, recovery_run - 1)) AS run_index
     FROM gold_feed_dropouts
 ),
 -- Dropouts of the same county can overlap; each run counts once.
@@ -349,8 +349,8 @@ SELECT
     e.census_region,
     e.event_start,
     e.last_reading_time + INTERVAL 15 MINUTES                             AS event_end,
-    (unix_seconds(e.last_reading_time + INTERVAL 15 MINUTES)
-        - unix_seconds(e.event_start)) / 3600.0                           AS duration_hours,
+    (UNIX_SECONDS(e.last_reading_time + INTERVAL 15 MINUTES)
+        - UNIX_SECONDS(e.event_start)) / 3600.0                           AS duration_hours,
     e.reading_count,
     e.peak_customers_out,
     e.event_threshold,
@@ -381,8 +381,8 @@ INNER JOIN gap_overlap AS o
 -- Feed gaps per year: 3 / 16 / 41 (D3)
 SELECT YEAR(slot_time) AS year, COUNT_IF(NOT is_collected) AS feed_gaps
 FROM gold_collection_runs
-GROUP BY 1
-ORDER BY 1;
+GROUP BY YEAR(slot_time)
+ORDER BY year;
 
 -- Feed dropouts per year (D19)
 SELECT dropout_year, COUNT(*) AS dropouts, SUM(dropout_runs) AS dropout_runs

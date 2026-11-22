@@ -1,0 +1,146 @@
+# sqlfluff configuration for sql/databricks/ (D51).
+# Lint locally with "make lint" (the CLI flags --ignore-local-config --config .sqlfluff keep
+# sqlfluff from reading config outside the repo).
+#
+# The [sqlfluff:templater:placeholder] section is written by scripts/sqlfluff_config.py from
+# config/pipeline.yml. Do not edit it by hand: change the config and rerun the script.
+
+[sqlfluff]
+dialect = databricks
+templater = placeholder
+max_line_length = 160
+# The largest files (02_silver_sources.sql, 90_quality_checks.sql) are above the 20 KB default.
+large_file_skip_byte_limit = 0
+# Rules left out on purpose (D51): they fight the house layout, which aligns columns and AS
+# aliases, keeps short count queries and UNION ALL branches on one line, puts each CTE's comment
+# directly above it, and indents AND under WHERE. Everything else is enforced.
+#   LT01 spacing (alignment)      LT02 indentation       LT08 blank line after a CTE
+#   LT09 one select target a line LT11 set operators on their own line
+#   LT14 keyword on a new line    AL03 aliases on UNION ALL branches after the first
+#   AM04 Bronze tables are SELECT * from raw files by design (D14)
+#   CP02 NOAA and MCC source columns keep their upper-case source names
+#   RF04 year, state and similar names are part of the published schema
+#   ST06 column order follows the published schema
+#   ST09 join conditions are written in the order that reads best per join
+exclude_rules = LT01, LT02, LT08, LT09, LT11, LT14, AL03, AM04, CP02, RF04, ST06, ST09
+
+[sqlfluff:indentation]
+tab_space_size = 4
+indented_joins = False
+indented_using_on = True
+implicit_indents = allow
+
+[sqlfluff:rules:capitalisation.keywords]
+capitalisation_policy = upper
+
+[sqlfluff:rules:capitalisation.functions]
+extended_capitalisation_policy = upper
+
+[sqlfluff:rules:capitalisation.literals]
+capitalisation_policy = upper
+
+[sqlfluff:rules:capitalisation.types]
+extended_capitalisation_policy = upper
+
+[sqlfluff:rules:ambiguous.column_references]
+group_by_and_order_by_style = consistent
+
+[sqlfluff:rules:references.consistent]
+single_table_references = consistent
+
+[sqlfluff:templater:placeholder]
+# sqlfluff nests dotted keys, so each value is keyed by the last part of its placeholder name
+# (${events.threshold_share} -> threshold_share); the script checks those parts are unique.
+param_regex = \$\{(?:[A-Za-z_]\w*\.)*(?P<param_name>[A-Za-z_]\w*)\}
+eia_year = 2024
+peak_skip_ratio = 1.25
+state_ratio = 1.25
+min_customer_coverage = 0.7
+min_customer_coverage_pct = 70
+mismatch_ratio = 2
+drop_below_pct = 10
+drop_below_share = 0.1
+recovery_max_minutes = 75
+recovery_max_runs = 5
+recovery_pct = 50
+recovery_share = 0.5
+large_outage_customers = 10000
+max_gap_hours = 1
+max_gap_runs = 4
+min_customers_out = 100
+threshold_share = 0.0025
+capped_share = 0.25
+capped_share_pct = 25
+peak_to_customers = 3
+peak_to_customers_label = 3
+band_high = 10000
+band_high_label = 10,000+
+band_low = 1000
+band_low_label = 1-999
+band_mid_label = 1,000-9,999
+start_window_hours = 12
+catalog = workspace
+schema = outages
+volume = raw
+volume_path = /Volumes/workspace/outages/raw
+bronze_eaglei_2022 = 25796465
+bronze_eaglei_2023 = 26101051
+bronze_eaglei_2024 = 27701334
+bronze_eaglei_mcc = 3234
+bronze_eia861_reliability = 3042
+bronze_eia861_sales = 8791
+bronze_eia861_service_territory = 35616
+bronze_noaa_state_codes = 69
+bronze_noaa_storm_events = 215282
+bronze_nws_zone_county = 28391
+bronze_oe417 = 742
+bronze_oe417_event_types = 43
+bronze_ranking_exclusions = 0
+bronze_state_regions = 53
+bronze_state_time_zones = 53
+bronze_storm_event_severity = 54
+dim_county_customers = 3063
+gold_collection_runs = 105216
+gold_county_ranking_footnotes = 135
+gold_county_reliability = 9159
+gold_event_storm_match = 446261
+gold_event_thresholds = 3063
+gold_feed_dropouts = 19190
+gold_oe417_check = 738
+gold_outage_events = 446261
+gold_state_coverage = 53
+gold_state_reliability = 153
+gold_territory_reliability = 6
+gold_territory_unit_reliability = 30
+gold_unit_reliability = 9189
+gold_utility_reliability = 2204
+gold_utility_reliability_other = 704
+silver_eia_state_customers = 168
+silver_nws_zone_county = 28209
+silver_nws_zone_versions = 6
+silver_oe417 = 738
+silver_oe417_locations = 1972
+silver_oe417_rows = 738
+silver_outages = 79598850
+silver_storm_event_details = 215282
+silver_storm_events = 232414
+silver_storm_events_unplaced = 8756
+silver_utility_reliability = 2908
+float_tolerance = 1e-06
+row_count_tolerance = 0
+min_customers = 1000
+min_customers_label = 1,000
+ranked_jurisdictions = 51
+window_after_hours = 1
+window_before_hours = 12
+eversource_ids_sql = '4176', '54913', '15472'
+national_grid_ids_sql = '11804', '13206', '13573'
+label = National Grid (sold to PPL in May 2022)
+utility_number = 13214
+year = 2022
+size_band_large = 500000
+size_band_medium = 100000
+size_band_small = 10000
+source_error_customer_share = 0.1
+last = 2024
+sql = 2022, 2023, 2024

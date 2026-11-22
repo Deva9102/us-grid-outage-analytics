@@ -122,7 +122,7 @@ reasons AS (
             WHEN NOT ranking_eligible THEN 'state below ${coverage.min_customer_coverage_pct}% customer coverage (D22)'
             WHEN exclusion_reason IS NOT NULL THEN CONCAT('reviewed exclusion (D46): ', exclusion_reason)
             WHEN capped_share > ${footnotes.capped_share} AND peak_to_customers > ${footnotes.peak_to_customers}
-                THEN 'over ${footnotes.capped_share_pct}% of customer-hours from capped readings and peak above ${footnotes.peak_to_customers_label}x customers (D45)'
+                THEN 'over ${footnotes.capped_share_pct}% of customer-hours from capped readings and peak above ${footnotes.peak_to_customers_label}x customers (D45)'  -- noqa: LT05
         END AS footnote_reason,
         CASE
             WHEN exclusion_reason IS NOT NULL THEN exclusion_evidence

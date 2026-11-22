@@ -30,14 +30,14 @@ AS
 SELECT
     *,
     _metadata.file_path AS source_file,
-    current_timestamp() AS loaded_at
-FROM read_files(
+    CURRENT_TIMESTAMP() AS loaded_at
+FROM READ_FILES(
     '${project.volume_path}/noaa_storm_events/*/*.csv.gz',
     format => 'csv',
-    header => true,
-    multiLine => true,
+    header => TRUE,
+    multiLine => TRUE,
     escape => '"',
-    inferColumnTypes => false
+    inferColumnTypes => FALSE
 );
 
 
@@ -51,14 +51,14 @@ AS
 SELECT
     *,
     _metadata.file_path AS source_file,
-    current_timestamp() AS loaded_at
-FROM read_files(
+    CURRENT_TIMESTAMP() AS loaded_at
+FROM READ_FILES(
     '${project.volume_path}/nws_zone_county/*/*.dbx',
     format => 'csv',
     sep => '|',
-    header => false,
+    header => FALSE,
     encoding => 'ISO-8859-1',
-    schema => 'state STRING, zone STRING, cwa STRING, name STRING, state_zone STRING, county STRING, fips STRING, time_zone STRING, fe_area STRING, lat STRING, lon STRING'
+    schema => 'state STRING, zone STRING, cwa STRING, name STRING, state_zone STRING, county STRING, fips STRING, time_zone STRING, fe_area STRING, lat STRING, lon STRING'  -- noqa: LT05
 );
 
 
@@ -72,8 +72,8 @@ AS
 SELECT
     *,
     _metadata.file_path AS source_file,
-    current_timestamp() AS loaded_at
-FROM read_files('${project.volume_path}/eia861_parquet/*/reliability_*.parquet', format => 'parquet');
+    CURRENT_TIMESTAMP() AS loaded_at
+FROM READ_FILES('${project.volume_path}/eia861_parquet/*/reliability_*.parquet', format => 'parquet');
 
 CREATE OR REPLACE TABLE bronze_eia861_sales
 COMMENT 'EIA-861 Sales to Ultimate Customers workbooks, every row of every sheet as text'
@@ -81,8 +81,8 @@ AS
 SELECT
     *,
     _metadata.file_path AS source_file,
-    current_timestamp() AS loaded_at
-FROM read_files('${project.volume_path}/eia861_parquet/*/sales_*.parquet', format => 'parquet');
+    CURRENT_TIMESTAMP() AS loaded_at
+FROM READ_FILES('${project.volume_path}/eia861_parquet/*/sales_*.parquet', format => 'parquet');
 
 CREATE OR REPLACE TABLE bronze_eia861_service_territory
 COMMENT 'EIA-861 Service Territory workbooks, every row of every sheet as text'
@@ -90,8 +90,8 @@ AS
 SELECT
     *,
     _metadata.file_path AS source_file,
-    current_timestamp() AS loaded_at
-FROM read_files('${project.volume_path}/eia861_parquet/*/service_territory_*.parquet', format => 'parquet');
+    CURRENT_TIMESTAMP() AS loaded_at
+FROM READ_FILES('${project.volume_path}/eia861_parquet/*/service_territory_*.parquet', format => 'parquet');
 
 
 -- -----------------------------------------------------------------------------
@@ -104,8 +104,8 @@ AS
 SELECT
     *,
     _metadata.file_path AS source_file,
-    current_timestamp() AS loaded_at
-FROM read_files('${project.volume_path}/oe417_parquet/*/oe417_*.parquet', format => 'parquet');
+    CURRENT_TIMESTAMP() AS loaded_at
+FROM READ_FILES('${project.volume_path}/oe417_parquet/*/oe417_*.parquet', format => 'parquet');
 
 
 -- -----------------------------------------------------------------------------
@@ -118,11 +118,11 @@ AS
 SELECT
     *,
     _metadata.file_path AS source_file,
-    current_timestamp() AS loaded_at
-FROM read_files(
+    CURRENT_TIMESTAMP() AS loaded_at
+FROM READ_FILES(
     '${project.volume_path}/reference/noaa_state_codes.csv',
     format => 'csv',
-    header => true,
+    header => TRUE,
     schema => 'noaa_state_fips STRING, noaa_state_name STRING, state_fips STRING, area_type STRING'
 );
 
@@ -132,11 +132,11 @@ AS
 SELECT
     *,
     _metadata.file_path AS source_file,
-    current_timestamp() AS loaded_at
-FROM read_files(
+    CURRENT_TIMESTAMP() AS loaded_at
+FROM READ_FILES(
     '${project.volume_path}/reference/oe417_event_types.csv',
     format => 'csv',
-    header => true,
+    header => TRUE,
     schema => 'event_type_key STRING, category STRING, multiple_types STRING, rows_2022_2023 STRING'
 );
 
@@ -146,11 +146,11 @@ AS
 SELECT
     *,
     _metadata.file_path AS source_file,
-    current_timestamp() AS loaded_at
-FROM read_files(
+    CURRENT_TIMESTAMP() AS loaded_at
+FROM READ_FILES(
     '${project.volume_path}/reference/storm_event_severity.csv',
     format => 'csv',
-    header => true,
+    header => TRUE,
     schema => 'event_type STRING, severity_rank STRING, severity_tier STRING, can_cause_outage STRING'
 );
 
@@ -160,11 +160,11 @@ AS
 SELECT
     *,
     _metadata.file_path AS source_file,
-    current_timestamp() AS loaded_at
-FROM read_files(
+    CURRENT_TIMESTAMP() AS loaded_at
+FROM READ_FILES(
     '${project.volume_path}/reference/ranking_exclusions.csv',
     format => 'csv',
-    header => true,
+    header => TRUE,
     schema => 'fips_code STRING, year STRING, county STRING, state STRING, reason STRING, evidence STRING, reviewed_on STRING'
 );
 
@@ -174,11 +174,11 @@ AS
 SELECT
     *,
     _metadata.file_path AS source_file,
-    current_timestamp() AS loaded_at
-FROM read_files(
+    CURRENT_TIMESTAMP() AS loaded_at
+FROM READ_FILES(
     '${project.volume_path}/reference/state_time_zones.csv',
     format => 'csv',
-    header => true,
+    header => TRUE,
     schema => 'state_abbr STRING, state_name STRING, primary_time_zone STRING'
 );
 

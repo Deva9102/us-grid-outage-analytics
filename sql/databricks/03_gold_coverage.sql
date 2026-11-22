@@ -23,14 +23,14 @@ WITH
 latest_zone_file AS (
     SELECT version
     FROM silver_nws_zone_versions
-    WHERE effective_from <= make_date(${years.last}, 12, 31)
+    WHERE effective_from <= MAKE_DATE(${years.last}, 12, 31)
     QUALIFY ROW_NUMBER() OVER (ORDER BY effective_from DESC) = 1
 ),
 all_counties AS (
     SELECT LEFT(z.fips_code, 2) AS state_fips, COUNT(DISTINCT z.fips_code) AS total_counties
     FROM silver_nws_zone_county AS z
     INNER JOIN latest_zone_file AS l ON l.version = z.version
-    GROUP BY 1
+    GROUP BY LEFT(z.fips_code, 2)
 ),
 -- Counties with EAGLE-I data and their calibrated denominators (D13, D21).
 eaglei AS (
@@ -41,7 +41,7 @@ eaglei AS (
         SUM(customers)                                       AS eaglei_customers,
         MAX(state_calibration_factor)                        AS calibration_factor
     FROM dim_county_customers
-    GROUP BY 1
+    GROUP BY LEFT(fips_code, 2)
 ),
 eia AS (
     SELECT state_abbr, customers AS eia_customers

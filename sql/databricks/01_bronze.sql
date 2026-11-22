@@ -34,8 +34,8 @@ AS
 SELECT
     *,
     _metadata.file_path AS source_file,
-    current_timestamp() AS loaded_at
-FROM read_files(
+    CURRENT_TIMESTAMP() AS loaded_at
+FROM READ_FILES(
     '${project.volume_path}/eaglei_parquet/2022/',
     format => 'parquet',
     schema => 'fips_code STRING, county STRING, state STRING, customers_out STRING, run_start_time STRING'
@@ -47,8 +47,8 @@ AS
 SELECT
     *,
     _metadata.file_path AS source_file,
-    current_timestamp() AS loaded_at
-FROM read_files(
+    CURRENT_TIMESTAMP() AS loaded_at
+FROM READ_FILES(
     '${project.volume_path}/eaglei_parquet/2023/',
     format => 'parquet',
     schema => 'fips_code STRING, county STRING, state STRING, `sum` STRING, run_start_time STRING'
@@ -60,8 +60,8 @@ AS
 SELECT
     *,
     _metadata.file_path AS source_file,
-    current_timestamp() AS loaded_at
-FROM read_files(
+    CURRENT_TIMESTAMP() AS loaded_at
+FROM READ_FILES(
     '${project.volume_path}/eaglei_parquet/2024/',
     format => 'parquet',
     schema => 'fips_code STRING, county STRING, state STRING, customers_out STRING, run_start_time STRING, total_customers STRING'
@@ -80,11 +80,11 @@ AS
 SELECT
     *,
     _metadata.file_path AS source_file,
-    current_timestamp() AS loaded_at
-FROM read_files(
+    CURRENT_TIMESTAMP() AS loaded_at
+FROM READ_FILES(
     '${project.volume_path}/eaglei/metadata/MCC.csv',
     format => 'csv',
-    header => true,
+    header => TRUE,
     schema => 'County_FIPS STRING, Customers STRING'
 );
 
@@ -95,11 +95,11 @@ AS
 SELECT
     *,
     _metadata.file_path AS source_file,
-    current_timestamp() AS loaded_at
-FROM read_files(
+    CURRENT_TIMESTAMP() AS loaded_at
+FROM READ_FILES(
     '${project.volume_path}/reference/state_regions.csv',
     format => 'csv',
-    header => true,
+    header => TRUE,
     schema => 'state_fips STRING, state_abbr STRING, state_name STRING, census_region STRING, census_division STRING, fema_region STRING'
 );
 

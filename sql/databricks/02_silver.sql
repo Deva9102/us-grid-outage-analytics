@@ -29,7 +29,7 @@ CREATE OR REPLACE TABLE dim_county_customers (
     denominator_source   STRING           COMMENT 'total_customers_2024, max_mcc_2024, mcc, or NULL',
     denominator_mismatch BOOLEAN NOT NULL COMMENT 'True when MCC and 2024 total_customers differ by more than ${denominator.mismatch_ratio}x (D12)',
     calibration_factor   DOUBLE  NOT NULL COMMENT 'D13 denominator / final denominator for this county; 1.0 if unchanged (D21, D35)',
-    state_calibration_factor DOUBLE NOT NULL COMMENT 'State D13 total / EIA-861 ${calibration.eia_year} total where above ${calibration.state_ratio}, else 1.0 (D21)',
+    state_calibration_factor DOUBLE NOT NULL COMMENT 'State D13 total / EIA-861 ${calibration.eia_year} total where above ${calibration.state_ratio}, else 1.0 (D21)',  -- noqa: LT05
     peak_floor_applied   BOOLEAN NOT NULL COMMENT 'True when the county was held at its peak customers out (D35)',
     peak_floor_skipped   BOOLEAN NOT NULL COMMENT 'True when the peak exceeds ${calibration.peak_skip_ratio}x the D13 denominator, so no floor applies (D36)'
 )
@@ -40,9 +40,9 @@ WITH
 -- Every county seen in any year gets a row, so no outage row loses its denominator join.
 eaglei_counties AS (
     SELECT LPAD(TRIM(fips_code), 5, '0') AS fips_code FROM bronze_eaglei_2022
-    UNION
+    UNION DISTINCT
     SELECT LPAD(TRIM(fips_code), 5, '0') FROM bronze_eaglei_2023
-    UNION
+    UNION DISTINCT
     SELECT LPAD(TRIM(fips_code), 5, '0') FROM bronze_eaglei_2024
 ),
 -- 2024 total_customers is constant per county, so one value per county loses nothing (D13).
@@ -51,7 +51,7 @@ totals_2024 AS (
         LPAD(TRIM(fips_code), 5, '0')            AS fips_code,
         MAX(TRY_CAST(total_customers AS BIGINT)) AS total_customers_2024
     FROM bronze_eaglei_2024
-    GROUP BY 1
+    GROUP BY LPAD(TRIM(fips_code), 5, '0')
 ),
 -- MCC stores FIPS as numbers (lost leading zeros) and ends with a Grand Total row (D5).
 mcc AS (
@@ -59,7 +59,7 @@ mcc AS (
         LPAD(TRIM(County_FIPS), 5, '0')  AS fips_code,
         TRY_CAST(Customers AS BIGINT)    AS mcc_customers
     FROM bronze_eaglei_mcc
-    WHERE regexp_like(TRIM(County_FIPS), '^[0-9]+$')
+    WHERE REGEXP_LIKE(TRIM(County_FIPS), '^[0-9]+$')
 ),
 -- A gap above denominator.mismatch_ratio between the two sources is a data error, not growth (D12).
 compared AS (
@@ -104,7 +104,7 @@ peaks AS (
         UNION ALL
         SELECT fips_code, customers_out FROM bronze_eaglei_2024
     ) AS readings
-    GROUP BY 1
+    GROUP BY LPAD(TRIM(fips_code), 5, '0')
 ),
 -- State totals of the D13 denominators, compared with EIA-861 customers of calibration.eia_year (D21).
 state_totals AS (
@@ -260,7 +260,7 @@ typed AS (
         TRIM(county)                                             AS county,
         TRY_CAST(customers_out AS BIGINT)                        AS customers_out,
         TRY_CAST(total_customers AS BIGINT)                      AS total_customers,
-        try_to_timestamp(run_start_time, 'yyyy-MM-dd HH:mm:ss')  AS run_start_time,
+        TRY_TO_TIMESTAMP(run_start_time, 'yyyy-MM-dd HH:mm:ss')  AS run_start_time,
         source_file
     FROM unioned
 ),
@@ -276,7 +276,7 @@ valid AS (
 floored AS (
     SELECT
         *,
-        timestamp_seconds(FLOOR(unix_seconds(run_start_time) / 900) * 900) AS reading_time
+        TIMESTAMP_SECONDS(FLOOR(UNIX_SECONDS(run_start_time) / 900) * 900) AS reading_time
     FROM valid
 ),
 -- Flooring can create duplicate keys; keep the highest reading (D7).
@@ -285,7 +285,7 @@ deduped AS (
     FROM floored
     QUALIFY ROW_NUMBER() OVER (
         PARTITION BY fips_code, reading_time
-        ORDER BY customers_out DESC, source_file
+        ORDER BY customers_out DESC, source_file ASC
     ) = 1
 )
 -- Region attributes come from the state FIPS prefix, never from names (D8, D16).
@@ -315,7 +315,9 @@ LEFT JOIN  dim_county_customers AS k ON k.fips_code  = d.fips_code;
 
 -- Denominator sources: total_customers_2024 2,687 / max_mcc_2024 372 / mcc 2 / NULL 2
 SELECT denominator_source, COUNT(*) AS counties, SUM(customers) AS customers,
-       COUNT_IF(state_calibration_factor > 1) AS calibrated_counties, COUNT_IF(peak_floor_applied) AS floored_counties, COUNT_IF(peak_floor_skipped) AS floor_skipped_counties
+       COUNT_IF(state_calibration_factor > 1) AS calibrated_counties,
+       COUNT_IF(peak_floor_applied) AS floored_counties,
+       COUNT_IF(peak_floor_skipped) AS floor_skipped_counties
 FROM dim_county_customers
 GROUP BY denominator_source
 ORDER BY counties DESC;

@@ -42,7 +42,7 @@ sales AS (
         TRY_CAST(col_24 AS BIGINT)                 AS total_customers
     FROM bronze_eia861_sales
     WHERE sheet_name IN ('States', 'Territories')
-      AND regexp_like(col_01, '^[0-9]{4}$')
+      AND REGEXP_LIKE(col_01, '^[0-9]{4}$')
 )
 -- Part B (energy-only) repeats the Part C (delivery-only) customers in retail-choice states (D23).
 SELECT
@@ -79,7 +79,7 @@ reliability AS (
         TRY_CAST(col_24 AS BIGINT)     AS other_customers
     FROM bronze_eia861_reliability
     WHERE sheet_name IN ('Reliability_States', 'Reliability_Territories')
-      AND regexp_like(col_01, '^[0-9]{4}$')
+      AND REGEXP_LIKE(col_01, '^[0-9]{4}$')
 ),
 -- A utility reports under one standard; metrics are taken from that standard only (D23).
 standard AS (
@@ -103,9 +103,9 @@ sales AS (
         SUM(TRY_CAST(col_24 AS BIGINT)) AS customers
     FROM bronze_eia861_sales
     WHERE sheet_name IN ('States', 'Territories')
-      AND regexp_like(col_01, '^[0-9]{4}$')
+      AND REGEXP_LIKE(col_01, '^[0-9]{4}$')
       AND TRIM(col_04) IN ('A', 'C', 'D')
-    GROUP BY 1, 2, 3
+    GROUP BY TRY_CAST(col_01 AS INT), TRIM(col_02), TRIM(col_07)
 )
 -- Size bands by Sales customers, edges from utilities.size_band_edges (D32).
 SELECT
@@ -120,7 +120,7 @@ SELECT
     CASE s.reporting_standard WHEN 'IEEE 1366' THEN s.ieee_saifi_with_med    WHEN 'other' THEN s.other_saifi_with_med    END AS saifi_with_med,
     CASE s.reporting_standard WHEN 'IEEE 1366' THEN s.ieee_saifi_without_med WHEN 'other' THEN s.other_saifi_without_med END AS saifi_without_med,
     CASE s.reporting_standard WHEN 'IEEE 1366' THEN s.ieee_customers         WHEN 'other' THEN s.other_customers         END AS reliability_customers,
-    c.customers AS customers,
+    c.customers,
     CASE
         WHEN c.customers IS NULL   THEN 'unknown'
         WHEN c.customers < ${utilities.size_band_small}   THEN 'small'
@@ -145,22 +145,22 @@ AS
 WITH
 -- The version is in the file name, bp<day><2-letter month><yy>.
 files AS (
-    SELECT DISTINCT regexp_extract(source_file, '(bp[0-9]{2}[a-z]{2}[0-9]{2})', 1) AS version
+    SELECT DISTINCT REGEXP_EXTRACT(source_file, '(bp[0-9]{2}[a-z]{2}[0-9]{2})', 1) AS version
     FROM bronze_nws_zone_county
 ),
 -- NWS month codes are two letters, not standard abbreviations.
 dated AS (
     SELECT
         version,
-        make_date(
-            2000 + CAST(substr(version, 7, 2) AS INT),
-            CASE substr(version, 5, 2)
+        MAKE_DATE(
+            2000 + CAST(SUBSTR(version, 7, 2) AS INT),
+            CASE SUBSTR(version, 5, 2)
                 WHEN 'ja' THEN 1 WHEN 'fe' THEN 2 WHEN 'mr' THEN 3 WHEN 'ap' THEN 4
                 WHEN 'my' THEN 5 WHEN 'jn' THEN 6 WHEN 'jl' THEN 7 WHEN 'au' THEN 8
                 WHEN 'se' THEN 9 WHEN 'sp' THEN 9 WHEN 'oc' THEN 10 WHEN 'nv' THEN 11
                 WHEN 'no' THEN 11 WHEN 'de' THEN 12 WHEN 'dc' THEN 12
             END,
-            CAST(substr(version, 3, 2) AS INT)
+            CAST(SUBSTR(version, 3, 2) AS INT)
         ) AS effective_from
     FROM files
 )
@@ -183,7 +183,7 @@ SELECT DISTINCT
     LPAD(TRIM(z.fips), 5, '0')                             AS fips_code
 FROM bronze_nws_zone_county AS z
 INNER JOIN silver_nws_zone_versions AS v
-    ON v.version = regexp_extract(z.source_file, '(bp[0-9]{2}[a-z]{2}[0-9]{2})', 1);
+    ON v.version = REGEXP_EXTRACT(z.source_file, '(bp[0-9]{2}[a-z]{2}[0-9]{2})', 1);
 
 
 -- -----------------------------------------------------------------------------
@@ -205,9 +205,9 @@ coded AS (
 timed AS (
     SELECT
         *,
-        try_to_timestamp(CONCAT(TRIM(BEGIN_YEARMONTH), LPAD(TRIM(BEGIN_DAY), 2, '0'), LPAD(TRIM(BEGIN_TIME), 4, '0')), 'yyyyMMddHHmm') AS begin_local,
-        try_to_timestamp(CONCAT(TRIM(END_YEARMONTH), LPAD(TRIM(END_DAY), 2, '0'), LPAD(TRIM(END_TIME), 4, '0')), 'yyyyMMddHHmm')       AS end_local,
-        TRY_CAST(regexp_extract(TRIM(CZ_TIMEZONE), '(-?[0-9]+)$', 1) AS INT)                                                             AS utc_offset_hours
+        TRY_TO_TIMESTAMP(CONCAT(TRIM(BEGIN_YEARMONTH), LPAD(TRIM(BEGIN_DAY), 2, '0'), LPAD(TRIM(BEGIN_TIME), 4, '0')), 'yyyyMMddHHmm') AS begin_local,
+        TRY_TO_TIMESTAMP(CONCAT(TRIM(END_YEARMONTH), LPAD(TRIM(END_DAY), 2, '0'), LPAD(TRIM(END_TIME), 4, '0')), 'yyyyMMddHHmm')       AS end_local,
+        TRY_CAST(REGEXP_EXTRACT(TRIM(CZ_TIMEZONE), '(-?[0-9]+)$', 1) AS INT)                                                             AS utc_offset_hours
     FROM coded
 )
 -- Damage text like 10.00K / 1.5M / 2B becomes US dollars; an empty value stays NULL, not 0 (D31).
@@ -230,13 +230,13 @@ SELECT
     begin_local - INTERVAL 1 HOUR * utc_offset_hours AS begin_utc,
     end_local   - INTERVAL 1 HOUR * utc_offset_hours AS end_utc,
     CASE
-        WHEN regexp_like(TRIM(DAMAGE_PROPERTY), '^[0-9.]+[KMB]?$')
-        THEN TRY_CAST(regexp_extract(TRIM(DAMAGE_PROPERTY), '^([0-9.]+)', 1) AS DOUBLE)
+        WHEN REGEXP_LIKE(TRIM(DAMAGE_PROPERTY), '^[0-9.]+[KMB]?$')
+        THEN TRY_CAST(REGEXP_EXTRACT(TRIM(DAMAGE_PROPERTY), '^([0-9.]+)', 1) AS DOUBLE)
              * CASE RIGHT(TRIM(DAMAGE_PROPERTY), 1) WHEN 'K' THEN 1E3 WHEN 'M' THEN 1E6 WHEN 'B' THEN 1E9 ELSE 1 END
     END                                     AS damage_property_usd,
     CASE
-        WHEN regexp_like(TRIM(DAMAGE_CROPS), '^[0-9.]+[KMB]?$')
-        THEN TRY_CAST(regexp_extract(TRIM(DAMAGE_CROPS), '^([0-9.]+)', 1) AS DOUBLE)
+        WHEN REGEXP_LIKE(TRIM(DAMAGE_CROPS), '^[0-9.]+[KMB]?$')
+        THEN TRY_CAST(REGEXP_EXTRACT(TRIM(DAMAGE_CROPS), '^([0-9.]+)', 1) AS DOUBLE)
              * CASE RIGHT(TRIM(DAMAGE_CROPS), 1) WHEN 'K' THEN 1E3 WHEN 'M' THEN 1E6 WHEN 'B' THEN 1E9 ELSE 1 END
     END                                     AS damage_crops_usd,
     TRY_CAST(DEATHS_DIRECT AS INT)          AS deaths_direct,
@@ -355,15 +355,15 @@ headers AS (
 data_rows AS (
     SELECT
         b.*,
-        CAST(regexp_extract(b.source_name, '([0-9]{4})', 1) AS INT) AS report_year,
+        CAST(REGEXP_EXTRACT(b.source_name, '([0-9]{4})', 1) AS INT) AS report_year,
         CAST(b.row_number AS INT)                                  AS sheet_row
     FROM bronze_oe417 AS b
     INNER JOIN headers AS h
         ON h.source_name = b.source_name AND CAST(b.row_number AS INT) > h.header_row
-    WHERE CONCAT(COALESCE(TRIM(col_01), ''), COALESCE(TRIM(col_02), ''), COALESCE(TRIM(col_03), ''),
-                 COALESCE(TRIM(col_04), ''), COALESCE(TRIM(col_05), ''), COALESCE(TRIM(col_06), ''),
-                 COALESCE(TRIM(col_07), ''), COALESCE(TRIM(col_08), ''), COALESCE(TRIM(col_09), ''),
-                 COALESCE(TRIM(col_10), ''), COALESCE(TRIM(col_11), '')) <> ''
+    WHERE CONCAT(COALESCE(TRIM(b.col_01), ''), COALESCE(TRIM(b.col_02), ''), COALESCE(TRIM(b.col_03), ''),
+                 COALESCE(TRIM(b.col_04), ''), COALESCE(TRIM(b.col_05), ''), COALESCE(TRIM(b.col_06), ''),
+                 COALESCE(TRIM(b.col_07), ''), COALESCE(TRIM(b.col_08), ''), COALESCE(TRIM(b.col_09), ''),
+                 COALESCE(TRIM(b.col_10), ''), COALESCE(TRIM(b.col_11), '')) <> ''
 ),
 -- Dates are M/d/yyyy text, ISO dates, or Excel day numbers stored as text; times are HH:MM:SS (D27, D33).
 parsed AS (
@@ -372,22 +372,22 @@ parsed AS (
         sheet_row,
         CONCAT(CAST(report_year AS STRING), '-',
                LPAD(CAST(ROW_NUMBER() OVER (PARTITION BY report_year ORDER BY sheet_row) AS STRING), 4, '0')) AS incident_id,
-        COALESCE(try_to_timestamp(TRIM(col_02), 'M/d/yyyy'), try_to_timestamp(TRIM(col_02), 'yyyy-MM-dd'),
-                 CASE WHEN regexp_like(TRIM(col_02), '^[0-9]{5}$')
-                      THEN timestamp_seconds((CAST(TRIM(col_02) AS BIGINT) - 25569) * 86400) END) AS begin_date,
-        COALESCE(try_to_timestamp(TRIM(col_04), 'M/d/yyyy'), try_to_timestamp(TRIM(col_04), 'yyyy-MM-dd'),
-                 CASE WHEN regexp_like(TRIM(col_04), '^[0-9]{5}$')
-                      THEN timestamp_seconds((CAST(TRIM(col_04) AS BIGINT) - 25569) * 86400) END) AS restoration_date,
-        CASE WHEN regexp_like(TRIM(col_03), '^[0-9]{1,2}:[0-9]{2}(:[0-9]{2})?$')
-             THEN CAST(split_part(TRIM(col_03), ':', 1) AS INT) * 3600 + CAST(split_part(TRIM(col_03), ':', 2) AS INT) * 60
-                  + COALESCE(TRY_CAST(split_part(TRIM(col_03), ':', 3) AS INT), 0)
+        COALESCE(TRY_TO_TIMESTAMP(TRIM(col_02), 'M/d/yyyy'), TRY_TO_TIMESTAMP(TRIM(col_02), 'yyyy-MM-dd'),
+                 CASE WHEN REGEXP_LIKE(TRIM(col_02), '^[0-9]{5}$')
+                      THEN TIMESTAMP_SECONDS((CAST(TRIM(col_02) AS BIGINT) - 25569) * 86400) END) AS begin_date,
+        COALESCE(TRY_TO_TIMESTAMP(TRIM(col_04), 'M/d/yyyy'), TRY_TO_TIMESTAMP(TRIM(col_04), 'yyyy-MM-dd'),
+                 CASE WHEN REGEXP_LIKE(TRIM(col_04), '^[0-9]{5}$')
+                      THEN TIMESTAMP_SECONDS((CAST(TRIM(col_04) AS BIGINT) - 25569) * 86400) END) AS restoration_date,
+        CASE WHEN REGEXP_LIKE(TRIM(col_03), '^[0-9]{1,2}:[0-9]{2}(:[0-9]{2})?$')
+             THEN CAST(SPLIT_PART(TRIM(col_03), ':', 1) AS INT) * 3600 + CAST(SPLIT_PART(TRIM(col_03), ':', 2) AS INT) * 60
+                  + COALESCE(TRY_CAST(SPLIT_PART(TRIM(col_03), ':', 3) AS INT), 0)
         END AS begin_seconds,
-        CASE WHEN regexp_like(TRIM(col_05), '^[0-9]{1,2}:[0-9]{2}(:[0-9]{2})?$')
-             THEN CAST(split_part(TRIM(col_05), ':', 1) AS INT) * 3600 + CAST(split_part(TRIM(col_05), ':', 2) AS INT) * 60
-                  + COALESCE(TRY_CAST(split_part(TRIM(col_05), ':', 3) AS INT), 0)
+        CASE WHEN REGEXP_LIKE(TRIM(col_05), '^[0-9]{1,2}:[0-9]{2}(:[0-9]{2})?$')
+             THEN CAST(SPLIT_PART(TRIM(col_05), ':', 1) AS INT) * 3600 + CAST(SPLIT_PART(TRIM(col_05), ':', 2) AS INT) * 60
+                  + COALESCE(TRY_CAST(SPLIT_PART(TRIM(col_05), ':', 3) AS INT), 0)
         END AS restoration_seconds,
-        regexp_replace(LOWER(TRIM(COALESCE(col_04, ''))), '^[- ]+', '') AS restoration_text,
-        REPLACE(regexp_replace(REPLACE(REPLACE(COALESCE(col_06, ''), chr(160), ' '), '[', ''), '[0-9]+]', ''),
+        REGEXP_REPLACE(LOWER(TRIM(COALESCE(col_04, ''))), '^[- ]+', '') AS restoration_text,
+        REPLACE(REGEXP_REPLACE(REPLACE(REPLACE(COALESCE(col_06, ''), CHR(160), ' '), '[', ''), '[0-9]+]', ''),
                 ', City of', '') AS area_text,
         TRIM(col_07) AS nerc_region,
         TRIM(col_08) AS alert_criteria,
@@ -403,10 +403,10 @@ SELECT
     report_year,
     sheet_row,
     CASE WHEN begin_date IS NOT NULL
-         THEN timestamp_seconds(unix_seconds(begin_date) + COALESCE(begin_seconds, 0)) END AS begin_local,
+         THEN TIMESTAMP_SECONDS(UNIX_SECONDS(begin_date) + COALESCE(begin_seconds, 0)) END AS begin_local,
     begin_seconds IS NOT NULL AS begin_time_reported,
     CASE WHEN restoration_date IS NOT NULL
-         THEN timestamp_seconds(unix_seconds(restoration_date) + COALESCE(restoration_seconds, 0)) END AS restoration_local,
+         THEN TIMESTAMP_SECONDS(UNIX_SECONDS(restoration_date) + COALESCE(restoration_seconds, 0)) END AS restoration_local,
     CASE
         WHEN restoration_date IS NOT NULL       THEN 'reported'
         WHEN restoration_text LIKE 'unk%'      THEN 'unknown'
@@ -418,8 +418,8 @@ SELECT
     nerc_region,
     alert_criteria,
     event_type_raw,
-    TRIM(regexp_replace(regexp_replace(regexp_replace(
-        LOWER(TRIM(REPLACE(COALESCE(event_type_raw, ''), chr(160), ' '))),
+    TRIM(REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(
+        LOWER(TRIM(REPLACE(COALESCE(event_type_raw, ''), CHR(160), ' '))),
         '^[- ]+', ''), ' *- +', ' - '), ' +', ' ')) AS event_type_key,
     demand_loss_mw,
     customers_affected
@@ -432,16 +432,16 @@ AS
 WITH
 -- Area Affected reads State: County, County; State: ... Split on : ; and , into ordered tokens.
 token_lists AS (
-    SELECT incident_id, split(area_text, '[:;,]') AS parts
+    SELECT incident_id, SPLIT(area_text, '[:;,]') AS parts
     FROM silver_oe417_rows
     WHERE TRIM(area_text) <> ''
 ),
 positions AS (
-    SELECT incident_id, parts, explode(sequence(1, cardinality(parts))) AS pos
+    SELECT incident_id, parts, EXPLODE(SEQUENCE(1, CARDINALITY(parts))) AS pos
     FROM token_lists
 ),
 tokens AS (
-    SELECT incident_id, pos, TRIM(element_at(parts, pos)) AS token
+    SELECT incident_id, pos, TRIM(ELEMENT_AT(parts, pos)) AS token
     FROM positions
 ),
 -- A token that is a state name opens that state's list; the other tokens are its counties.
@@ -469,8 +469,8 @@ located AS (
 counties AS (
     SELECT
         incident_id, pos, state_abbr, token AS county_name_raw,
-        TRIM(regexp_replace(regexp_replace(regexp_replace(regexp_replace(
-            REPLACE(REPLACE(REPLACE(REPLACE(LOWER(TRIM(token)), '&', ' and '), '.', ''), chr(39), ''), '-', ' '),
+        TRIM(REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(
+            REPLACE(REPLACE(REPLACE(REPLACE(LOWER(TRIM(token)), '&', ' and '), '.', ''), CHR(39), ''), '-', ' '),
             '^st ', 'saint '), '^ste ', 'sainte '),
             '(^| )(city and borough|census area|county|parish|borough|municipality|municipio)( |$)', ' '),
             ' +', ' ')) AS county_key
@@ -479,17 +479,17 @@ counties AS (
 ),
 eaglei_counties AS (
     SELECT fips_code, county FROM bronze_eaglei_2022
-    UNION
+    UNION DISTINCT
     SELECT fips_code, county FROM bronze_eaglei_2023
-    UNION
+    UNION DISTINCT
     SELECT fips_code, county FROM bronze_eaglei_2024
 ),
 eaglei_names AS (
     SELECT DISTINCT
         LPAD(TRIM(e.fips_code), 5, '0') AS fips_code,
         r.state_abbr,
-        TRIM(regexp_replace(regexp_replace(regexp_replace(regexp_replace(
-            REPLACE(REPLACE(REPLACE(REPLACE(LOWER(TRIM(e.county)), '&', ' and '), '.', ''), chr(39), ''), '-', ' '),
+        TRIM(REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(
+            REPLACE(REPLACE(REPLACE(REPLACE(LOWER(TRIM(e.county)), '&', ' and '), '.', ''), CHR(39), ''), '-', ' '),
             '^st ', 'saint '), '^ste ', 'sainte '),
             '(^| )(city and borough|census area|county|parish|borough|municipality|municipio)( |$)', ' '),
             ' +', ' ')) AS county_key
@@ -535,8 +535,8 @@ WITH
 locations AS (
     SELECT
         incident_id,
-        array_sort(array_agg(DISTINCT state_abbr) FILTER (WHERE state_abbr IS NOT NULL)) AS states_affected,
-        array_sort(array_agg(DISTINCT fips_code) FILTER (WHERE fips_code IS NOT NULL))   AS counties_affected,
+        ARRAY_SORT(ARRAY_AGG(DISTINCT state_abbr) FILTER (WHERE state_abbr IS NOT NULL)) AS states_affected,
+        ARRAY_SORT(ARRAY_AGG(DISTINCT fips_code) FILTER (WHERE fips_code IS NOT NULL))   AS counties_affected,
         COUNT(DISTINCT token_position) FILTER (WHERE location_level = 'county')          AS county_names_listed,
         COUNT(DISTINCT token_position) FILTER (WHERE location_level = 'county' AND fips_code IS NULL) AS county_names_unmatched
     FROM silver_oe417_locations
@@ -555,14 +555,14 @@ SELECT
     f.state_abbr                                                AS primary_state,
     z.primary_time_zone                                         AS time_zone,
     r.begin_local,
-    to_utc_timestamp(r.begin_local, z.primary_time_zone)        AS begin_utc,
+    TO_UTC_TIMESTAMP(r.begin_local, z.primary_time_zone)        AS begin_utc,
     r.begin_time_reported,
     r.restoration_local,
-    to_utc_timestamp(r.restoration_local, z.primary_time_zone)  AS restoration_utc,
+    TO_UTC_TIMESTAMP(r.restoration_local, z.primary_time_zone)  AS restoration_utc,
     r.restoration_status,
     l.states_affected,
     l.counties_affected,
-    CASE WHEN l.counties_affected IS NULL THEN 0 ELSE cardinality(l.counties_affected) END AS county_count,
+    CASE WHEN l.counties_affected IS NULL THEN 0 ELSE CARDINALITY(l.counties_affected) END AS county_count,
     COALESCE(l.county_names_listed, 0)                          AS county_names_listed,
     COALESCE(l.county_names_unmatched, 0)                       AS county_names_unmatched,
     r.event_type_raw,

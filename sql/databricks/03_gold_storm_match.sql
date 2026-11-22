@@ -49,8 +49,8 @@ candidates AS (
     SELECT
         o.event_id,
         s.*,
-        (unix_seconds(LEAST(o.event_end, s.window_end))
-            - unix_seconds(GREATEST(o.event_start, s.window_start))) / 3600.0 AS overlap_hours,
+        (UNIX_SECONDS(LEAST(o.event_end, s.window_end))
+            - UNIX_SECONDS(GREATEST(o.event_start, s.window_start))) / 3600.0 AS overlap_hours,
         s.window_start <= o.event_start AND s.window_end > o.event_start AS covers_start
     FROM gold_outage_events AS o
     INNER JOIN storms AS s
@@ -79,8 +79,8 @@ best AS (
             CASE WHEN has_start_storm AND NOT covers_start THEN 1 ELSE 0 END,
             CASE WHEN has_start_storm THEN severity_rank ELSE 0 END,
             overlap_hours DESC,
-            severity_rank,
-            storm_event_id
+            severity_rank ASC,
+            storm_event_id ASC
     ) = 1
 ),
 -- The most severe overlapping storm is kept alongside, so a long flood record cannot hide a
@@ -91,7 +91,7 @@ most_severe AS (
         event_type AS most_severe_storm_type,
         COUNT(*) OVER (PARTITION BY event_id) AS candidate_storms
     FROM candidates
-    QUALIFY ROW_NUMBER() OVER (PARTITION BY event_id ORDER BY severity_rank, overlap_hours DESC, storm_event_id) = 1
+    QUALIFY ROW_NUMBER() OVER (PARTITION BY event_id ORDER BY severity_rank ASC, overlap_hours DESC, storm_event_id ASC) = 1
 )
 SELECT
     o.event_id,

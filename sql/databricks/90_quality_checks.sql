@@ -63,7 +63,8 @@ FROM bronze_state_regions;
 WITH
 -- One count per Silver table with its expected value from the config.
 counts AS (
-    SELECT 'silver_eia_state_customers' AS table_name, COUNT(*) AS observed, ${quality.expected_rows.silver_eia_state_customers} AS expected FROM silver_eia_state_customers
+    SELECT 'silver_eia_state_customers' AS table_name, COUNT(*) AS observed, ${quality.expected_rows.silver_eia_state_customers} AS expected
+    FROM silver_eia_state_customers
     UNION ALL SELECT 'silver_utility_reliability', COUNT(*), ${quality.expected_rows.silver_utility_reliability} FROM silver_utility_reliability
     UNION ALL SELECT 'silver_nws_zone_versions', COUNT(*), ${quality.expected_rows.silver_nws_zone_versions} FROM silver_nws_zone_versions
     UNION ALL SELECT 'silver_nws_zone_county', COUNT(*), ${quality.expected_rows.silver_nws_zone_county} FROM silver_nws_zone_county
@@ -144,7 +145,7 @@ checks AS (
     SELECT 'silver_outages: customers_out < 0' AS check_name, CAST(COUNT_IF(customers_out < 0) AS DOUBLE) AS observed
     FROM silver_outages
     UNION ALL
-    SELECT 'silver_outages: fips_code not 5 digits (D6)', CAST(COUNT_IF(NOT regexp_like(fips_code, '^[0-9]{5}$')) AS DOUBLE)
+    SELECT 'silver_outages: fips_code not 5 digits (D6)', CAST(COUNT_IF(NOT REGEXP_LIKE(fips_code, '^[0-9]{5}$')) AS DOUBLE)
     FROM silver_outages
     UNION ALL
     SELECT 'silver_outages: reading_time off the 15-minute grid (D7)',
@@ -392,7 +393,7 @@ FROM ordered;
 WITH
 -- Runs of each county's feed dropouts; those readings were not measured and qualify for nothing (D19).
 dropout_runs_all AS (
-    SELECT fips_code, explode(sequence(drop_start_run, recovery_run - 1)) AS run_index
+    SELECT fips_code, EXPLODE(SEQUENCE(drop_start_run, recovery_run - 1)) AS run_index
     FROM gold_feed_dropouts
 ),
 dropout_runs AS (
@@ -413,7 +414,7 @@ qualifying AS (
 timeline AS (
     SELECT fips_code, reading_time AS t, CAST(NULL AS TIMESTAMP) AS event_start, 1 AS is_reading FROM qualifying
     UNION ALL
-    SELECT fips_code, event_start, event_start, 0 FROM gold_outage_events
+    SELECT fips_code, event_start AS t, event_start, 0 FROM gold_outage_events
 ),
 -- Event starts only increase in time, so a running MAX gives the latest event start so far.
 carried AS (
@@ -436,7 +437,7 @@ totals AS (
     SELECT
         COUNT_IF(event_end IS NULL OR t >= event_end)            AS outside_event,
         COUNT(*)                                                 AS qualifying_readings,
-        (SELECT SUM(reading_count) FROM gold_outage_events)      AS event_readings
+        (SELECT SUM(e.reading_count) FROM gold_outage_events AS e) AS event_readings
     FROM assigned
 )
 SELECT 'gold' AS layer, 'qualifying reading outside every event (D17)' AS check_name,
