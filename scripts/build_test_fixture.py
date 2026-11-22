@@ -14,8 +14,7 @@ pipeline's rules can be checked with exact expected values:
               Norton city VA: one reading; it has no denominator (D9).
     MCC       the 14 counties and the Grand Total row (D5)
     NOAA      storms whose match window (begin - 12 h to end + 1 h) overlaps a window in a
-              fixture county, plus one water-area event (D30); NWS zone rows for their zones;
-              events whose narrative trips the repository word scan are skipped (HYGIENE_WORDS)
+              fixture county, plus one water-area event (D30); NWS zone rows for their zones
     EIA-861   Sales rows for HI, UT, MA, TX, CA and VA 2024 (state totals, D21, D22) and the utilities
               ranked below; Reliability rows for HI, UT, MA 2024, the 2023 CT/MA pair behind the
               D39 source-error flag and National Grid RI 2022; the first 3 rows of each sheet
@@ -62,9 +61,6 @@ SALES_STATES_2024 = ("HI", "UT", "MA", "TX", "CA", "VA")
 RELIABILITY_2024 = ("HI", "UT", "MA")
 RELIABILITY_EXTRA = [(2023, "4176", "CT"), (2023, "54913", "MA"), (2022, "13214", "RI")]
 OE417_INCIDENTS = ["2022-0309", "2022-0312", "2022-0040", "2023-0204"]
-# Storms whose free-text narratives contain a word on the repository's commit word list are left
-# out, so the fixture passes the same pre-commit scan as the code (one 2023 Honolulu hail event).
-HYGIENE_WORDS = "(?i)gener" + "ated"
 
 
 def sql_list(values) -> str:
@@ -133,7 +129,6 @@ def noaa_and_zones(con) -> None:
         n = copy_csv(con, f"""
             SELECT * EXCLUDE (source_file) FROM bronze_noaa_storm_events
             WHERE CAST(EVENT_ID AS BIGINT) IN (SELECT event_id FROM fixture_storms) AND source_file LIKE '%d{year}_%'
-              AND NOT regexp_matches(COALESCE(EPISODE_NARRATIVE, '') || COALESCE(EVENT_NARRATIVE, ''), '{HYGIENE_WORDS}')
             ORDER BY CAST(EVENT_ID AS BIGINT)
         """, OUT / "noaa_storm_events" / str(year) / f"storm_events_details_{year}.csv")
         print(f"  NOAA {year}: {n} events")

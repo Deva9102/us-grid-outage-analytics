@@ -165,7 +165,7 @@ def test_eia_state_customers_use_parts_a_c_d(rows):
 def test_storm_events_placed_in_counties(rows, one):
     """D28-D31: NOAA events in UTC, county and zone events placed in counties, water events unplaced."""
     assert rows("SELECT location_type, COUNT(DISTINCT event_id), COUNT(*) FROM silver_storm_events GROUP BY 1 ORDER BY 1") \
-        == [("C", 6, 6), ("Z", 44, 60)]
+        == [("C", 7, 7), ("Z", 44, 60)]
     assert rows("SELECT event_type, reason FROM silver_storm_events_unplaced") == [("Marine Thunderstorm Wind", "water")]
     assert one("SELECT COUNT(*) FROM (SELECT event_id, SUM(event_weight) AS w FROM silver_storm_events "
                "GROUP BY 1 HAVING ABS(w - 1) > 1e-9)") == 0
