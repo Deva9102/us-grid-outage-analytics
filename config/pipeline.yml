@@ -92,7 +92,7 @@ export:                         # scripts/export_gold.py: CSVs for Power BI (D49
     - dim_county_customers
 
 quality:                        # sql/databricks/90_quality_checks.sql (D48)
-  row_count_tolerance: 0.01           # observed row counts may differ from expected by this share
+  row_count_tolerance: 0              # expected counts are a contract: they must match exactly (D50)
   float_tolerance: 0.000001           # slack for shares computed in floating point
   results_table: gold_quality_results
   # Row counts of the verified run (DuckDB and Databricks agree). Update only after a reviewed change.
