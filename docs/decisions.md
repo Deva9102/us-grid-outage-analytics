@@ -56,6 +56,9 @@ Row counts come from DuckDB runs against the raw EAGLE-I files
 | D48 | Quality gates after each layer; results in gold_quality_results; a failed check stops the run | All | 2026-11-21 |
 | D49 | Step logging to logs/, Makefile targets, CSV export split by year above 50 MB | All | 2026-11-21 |
 | D50 | Gold CSV exports not committed; row counts must match expected exactly | All | 2026-11-21 |
+| D51 | Continuous integration: real-data test fixture, pytest, linting | All | 2026-11-22 |
+| D52 | States with unknown coverage are not ranked | Gold | 2026-11-22 |
+| D53 | One shared SQL statement splitter that ignores semicolons in comments and literals | All | 2026-11-22 |
 
 ---
 
@@ -1958,6 +1961,37 @@ denominator, was therefore treated as fully covered and ranked with no rate.
 total and at least one denominator, so a full DuckDB rebuild gives the same state and county ranks
 and footnotes as before; the only differences are the new columns. In the fixture, Virginia (one
 county, Norton city, with no denominator) is no longer ranked and is footnoted `coverage_unknown`.
+
+---
+
+## D53. One shared SQL statement splitter
+
+**What:** `scripts/sql_split.py` is now the only place SQL text is split into statements. A small
+tokenizer separates code from string literals (`'...'` with `''` and backslash escapes),
+double-quoted strings, backtick identifiers, `--` line comments and `/* */` block comments; only a
+semicolon in code ends a statement. It replaces:
+- `split_statements`, `strip_comments` and `without_literals` in `run_databricks.py` (used by the
+  Databricks runner, `quality_checks.py` and `duckdb_pipeline.py`);
+- the regular expressions in `sql_dialect.table_statements` and
+  `test_gold_events_duckdb.gold_statements`, which cut a `CREATE OR REPLACE TABLE ... AS` statement
+  at the first line ending in `;`, so a comment or string ending in `;` would have cut a query short.
+
+An unterminated literal or block comment now stops the run instead of swallowing the rest of the
+file. `tests/test_sql_split.py` covers a comment ending in `;`, a string containing `;` (also at a
+line end), block comments, escaped quotes, quoted identifiers and comment markers inside strings,
+and checks that every statement of every pipeline file starts with a known keyword.
+
+**Why:** Two different splitting rules existed, and the regex one depended on formatting. One
+tested function makes the local tests, the DuckDB build and Databricks see the same statements.
+The old `without_literals` (the DROP/ALTER safety check) also treated an apostrophe inside a `--`
+comment (for example "county's") as the start of a string, which hid code from the check in four
+statements; the tokenizer fixes that. All 101 statements still pass the safety check.
+
+**Rows affected:** none. On every file in `sql/databricks/` the new splitter returns the same
+statements as before, byte for byte, and `table_statements` the same 41 (table, query) pairs. A
+full DuckDB rebuild from `data/raw/` gives identical contents in all tables (compared row by row
+with `EXCEPT ALL` against a build made before the change, ignoring `loaded_at`), and all 111
+quality checks pass.
 
 ---
 
