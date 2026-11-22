@@ -47,8 +47,22 @@ eia AS (
     SELECT state_abbr, customers AS eia_customers
     FROM silver_eia_state_customers
     WHERE data_year = ${calibration.eia_year}
+),
+-- Coverage is unknown without an EIA total or without any county denominator in the state; NULLs are
+-- handled here, not left to LEAST, which skips them (D52).
+measured AS (
+    SELECT
+        r.state_abbr,
+        CASE
+            WHEN i.eia_customers IS NULL OR i.eia_customers = 0 OR e.eaglei_customers IS NULL THEN NULL
+            ELSE LEAST(e.eaglei_customers / i.eia_customers, 1.0)
+        END AS customer_coverage
+    FROM bronze_state_regions AS r
+    LEFT JOIN eaglei AS e ON e.state_fips = r.state_fips
+    LEFT JOIN eia    AS i ON i.state_abbr = r.state_abbr
 )
--- Customer coverage is capped at 100%; a state below coverage.min_customer_coverage is footnoted, not ranked (D22).
+-- Customer coverage is capped at 100%. A state below coverage.min_customer_coverage is footnoted, not ranked (D22),
+-- and so is a state whose coverage is unknown, as coverage_unknown (D52).
 SELECT
     r.state_abbr,
     r.state_name,
@@ -59,8 +73,13 @@ SELECT
     COALESCE(e.counties_with_denominator, 0)                          AS counties_with_denominator,
     e.eaglei_customers,
     i.eia_customers,
-    LEAST(e.eaglei_customers / NULLIF(i.eia_customers, 0), 1.0)       AS customer_coverage,
-    COALESCE(LEAST(e.eaglei_customers / NULLIF(i.eia_customers, 0), 1.0) >= ${coverage.min_customer_coverage}, FALSE) AS ranking_eligible,
+    m.customer_coverage,
+    COALESCE(m.customer_coverage >= ${coverage.min_customer_coverage}, FALSE) AS ranking_eligible,
+    CASE
+        WHEN m.customer_coverage IS NULL THEN 'coverage_unknown'
+        WHEN m.customer_coverage < ${coverage.min_customer_coverage} THEN 'below_minimum'
+        ELSE 'covered'
+    END                                                               AS coverage_status,
     COALESCE(e.calibration_factor, 1.0)                               AS calibration_factor,
     CASE r.state_abbr
         WHEN 'PR' THEN 'EAGLE-I reports the 7 PREPA operating regions under the FIPS of each namesake municipio; results are region-level'
@@ -69,7 +88,8 @@ SELECT
 FROM bronze_state_regions AS r
 LEFT JOIN all_counties AS a ON a.state_fips = r.state_fips
 LEFT JOIN eaglei       AS e ON e.state_fips = r.state_fips
-LEFT JOIN eia          AS i ON i.state_abbr = r.state_abbr;
+LEFT JOIN eia          AS i ON i.state_abbr = r.state_abbr
+LEFT JOIN measured     AS m ON m.state_abbr = r.state_abbr;
 
 
 -- -----------------------------------------------------------------------------

@@ -88,7 +88,8 @@ rated AS (
         COALESCE(cp.capped_customer_hours, 0) / NULLIF(t.customer_hours_lost, 0) AS capped_share,
         t.max_peak_customers_out * 1.0 / NULLIF(c.customers, 0)        AS peak_to_customers,
         -- Ranked only with a denominator of ranking.min_customers+ (D11) in a state covered at the coverage minimum (D22).
-        c.customers IS NOT NULL AND c.customers >= ${ranking.min_customers} AND COALESCE(s.ranking_eligible, FALSE) AS ranking_eligible
+        c.customers IS NOT NULL AND c.customers >= ${ranking.min_customers} AND COALESCE(s.ranking_eligible, FALSE) AS ranking_eligible,
+        COALESCE(s.coverage_status, 'coverage_unknown')                AS state_coverage_status
     FROM counties AS c
     CROSS JOIN years AS y
     LEFT JOIN totals AS t ON t.fips_code = c.fips_code AND t.year = y.year
@@ -112,13 +113,14 @@ base AS (
     WHERE u.census_region <> 'Territory'
 ),
 -- Why a county-year is not ranked; the first reason that applies is kept. Footnoted county-years
--- stay in all raw totals (D9, D11, D22, D45, D46).
+-- stay in all raw totals (D9, D11, D22, D45, D46, D52).
 reasons AS (
     SELECT
         *,
         CASE
             WHEN customers IS NULL THEN 'no denominator (D9)'
             WHEN customers < ${ranking.min_customers} THEN 'denominator under ${ranking.min_customers_label} customers (D11)'
+            WHEN state_coverage_status = 'coverage_unknown' THEN 'coverage_unknown'
             WHEN NOT ranking_eligible THEN 'state below ${coverage.min_customer_coverage_pct}% customer coverage (D22)'
             WHEN exclusion_reason IS NOT NULL THEN CONCAT('reviewed exclusion (D46): ', exclusion_reason)
             WHEN capped_share > ${footnotes.capped_share} AND peak_to_customers > ${footnotes.peak_to_customers}
@@ -241,6 +243,10 @@ SELECT
     c.total_counties,
     c.customer_coverage,
     c.ranking_eligible,
+    CASE
+        WHEN COALESCE(c.coverage_status, 'coverage_unknown') = 'coverage_unknown' THEN 'coverage_unknown'
+        WHEN NOT c.ranking_eligible THEN 'state below ${coverage.min_customer_coverage_pct}% customer coverage (D22)'
+    END AS footnote_reason,
     CASE WHEN c.ranking_eligible
          THEN RANK() OVER (PARTITION BY s.year, c.ranking_eligible
                            ORDER BY s.customer_hours_with_denominator * 1000.0 / NULLIF(s.customers, 0) DESC) END AS national_rank,

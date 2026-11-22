@@ -64,14 +64,27 @@ def test_storm_attribution_rules():
 
 def test_state_coverage(rows):
     """D22: EAGLE-I customers / EIA-861 2024 customers, capped at 1; below 70% is footnoted.
-    VA has a county but no denominator: LEAST skips the NULL ratio, so coverage reads 1.0."""
+    D52: VA's only fixture county (Norton city) has no denominator, so its coverage is unknown."""
     assert rows("""
         SELECT state_abbr, eaglei_counties, eaglei_customers, eia_customers, ROUND(customer_coverage, 4), ranking_eligible,
-               ROUND(calibration_factor, 6)
+               coverage_status, ROUND(calibration_factor, 6)
         FROM gold_state_coverage WHERE eaglei_counties > 0 ORDER BY 1
-    """) == [("CA", 1, 3799750, 16140825, 0.2354, False, 1.0), ("HI", 5, 506989, 506988, 1.0, True, 1.317739),
-             ("TX", 2, 2039710, 14481051, 0.1409, False, 1.0), ("UT", 5, 1074165, 1429521, 0.7514, True, 1.0),
-             ("VA", 1, None, 4104032, 1.0, True, 1.0)]
+    """) == [("CA", 1, 3799750, 16140825, 0.2354, False, "below_minimum", 1.0),
+             ("HI", 5, 506989, 506988, 1.0, True, "covered", 1.317739),
+             ("TX", 2, 2039710, 14481051, 0.1409, False, "below_minimum", 1.0),
+             ("UT", 5, 1074165, 1429521, 0.7514, True, "covered", 1.0),
+             ("VA", 1, None, 4104032, None, False, "coverage_unknown", 1.0)]
+
+
+def test_unknown_coverage_is_not_ranked(rows):
+    """D52: a state with no EIA total or no county denominator is footnoted coverage_unknown, never ranked.
+    Every other state and territory without EAGLE-I counties in the fixture is unknown too."""
+    assert rows("""
+        SELECT year, state_abbr, national_rank, footnote_reason FROM gold_state_reliability
+        WHERE state_abbr = 'VA' ORDER BY year
+    """) == [(2022, "VA", None, "coverage_unknown"), (2024, "VA", None, "coverage_unknown")]
+    assert rows("SELECT coverage_status, COUNT(*) FROM gold_state_coverage GROUP BY 1 ORDER BY 1") == [
+        ("below_minimum", 2), ("coverage_unknown", 49), ("covered", 2)]
 
 
 def test_county_ranking_footnotes(rows):
@@ -112,16 +125,17 @@ def test_county_ranks(rows):
 
 
 def test_state_ranks(rows):
-    """D43: states with coverage are ranked; TX and CA are below 70% in the fixture and are not.
-    VA is ranked with no rate (see test_state_coverage); docs/decisions.md D51 records this."""
+    """D43: states with coverage are ranked; TX and CA are below 70% in the fixture and are not (D22),
+    and VA's coverage is unknown (D52)."""
+    d22 = "state below 70% customer coverage (D22)"
     assert rows("""
-        SELECT year, state_abbr, ROUND(outage_hours_per_1000_customers, 3), national_rank, region_rank
+        SELECT year, state_abbr, ROUND(outage_hours_per_1000_customers, 3), national_rank, region_rank, footnote_reason
         FROM gold_state_reliability ORDER BY year, state_abbr
     """) == [
-        (2022, "CA", 0.0, None, None), (2022, "HI", 0.576, 2, 2), (2022, "TX", 129.408, None, None),
-        (2022, "UT", 27.856, 1, 1), (2022, "VA", None, 3, 1),
-        (2024, "CA", 0.0, None, None), (2024, "HI", 279.842, 1, 1), (2024, "TX", 47385.167, None, None),
-        (2024, "UT", 16.209, 2, 2), (2024, "VA", None, 3, 1),
+        (2022, "CA", 0.0, None, None, d22), (2022, "HI", 0.576, 2, 2, None), (2022, "TX", 129.408, None, None, d22),
+        (2022, "UT", 27.856, 1, 1, None), (2022, "VA", None, None, None, "coverage_unknown"),
+        (2024, "CA", 0.0, None, None, d22), (2024, "HI", 279.842, 1, 1, None), (2024, "TX", 47385.167, None, None, d22),
+        (2024, "UT", 16.209, 2, 2, None), (2024, "VA", None, None, None, "coverage_unknown"),
     ]
 
 

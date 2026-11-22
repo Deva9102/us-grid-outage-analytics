@@ -355,6 +355,15 @@ checks AS (
            CAST(COUNT_IF(customer_coverage < 0 OR customer_coverage > 1) AS DOUBLE)
     FROM gold_state_coverage
     UNION ALL
+    SELECT 'gold_state_coverage: eligible with unknown coverage, or status inconsistent (D52)',
+           CAST(COUNT_IF((customer_coverage IS NULL) <> (coverage_status = 'coverage_unknown')
+                         OR (ranking_eligible AND coverage_status <> 'covered')) AS DOUBLE)
+    FROM gold_state_coverage
+    UNION ALL
+    SELECT 'gold_state_reliability: ranked state with unknown coverage (D52)',
+           CAST(COUNT_IF(national_rank IS NOT NULL AND (customer_coverage IS NULL OR footnote_reason IS NOT NULL)) AS DOUBLE)
+    FROM gold_state_reliability
+    UNION ALL
     SELECT 'gold_county_reliability: capped_share outside [0, 1] (D45)',
            CAST(COUNT_IF(capped_share < 0 OR capped_share > 1 + ${quality.float_tolerance}) AS DOUBLE)
     FROM gold_county_reliability
