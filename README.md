@@ -30,6 +30,9 @@ read it, so I change values there and nowhere else.
 | `make ci` | `lint` then `test`: the same checks GitHub Actions runs on every push and pull request. |
 | `make fixture` | Rebuilds `tests/fixtures/` from `data/raw/` (`scripts/build_test_fixture.py`). |
 | `make pipeline` | Converts and uploads the raw files, runs all SQL on Databricks, runs the quality gate after Bronze, Silver and Gold (a failed check stops the run), then verifies row counts and the top 10 events. |
+| `make cli` | Installs the pinned Databricks CLI into `.tools/` (checksum verified, no global install). |
+| `make job-deploy` | Renders the job SQL from `config/pipeline.yml` into `build/databricks/` and deploys the Databricks Job in `databricks.yml` (D54). |
+| `make job-run` | Runs the deployed job once and prints each task's result and duration. Deploying, repairs and failed gates are in `docs/runbook.md`. |
 | `make quality` | Runs every check in `sql/databricks/90_quality_checks.sql` and appends the results to `gold_quality_results`. `make quality ENGINE=duckdb` builds the pipeline locally and runs the same checks. |
 | `make export` | Writes the Gold tables to `data/gold_exports/` as CSV for Power BI, split by year when a file would exceed 50 MB. The CSVs are gitignored (D50). |
 | `make all` | `setup`, `download`, `test`, `pipeline`, `quality`, `export` in order. |

@@ -59,6 +59,7 @@ Row counts come from DuckDB runs against the raw EAGLE-I files
 | D51 | Continuous integration: real-data test fixture, pytest, linting | All | 2026-11-22 |
 | D52 | States with unknown coverage are not ranked | Gold | 2026-11-22 |
 | D53 | One shared SQL statement splitter that ignores semicolons in comments and literals | All | 2026-11-22 |
+| D54 | Pipeline as a Databricks Job (Asset Bundle) of SQL tasks with a quality gate after each | All | 2026-11-22 |
 
 ---
 
@@ -1992,6 +1993,54 @@ statements as before, byte for byte, and `table_statements` the same 41 (table, 
 full DuckDB rebuild from `data/raw/` gives identical contents in all tables (compared row by row
 with `EXCEPT ALL` against a build made before the change, ignoring `loaded_at`), and all 111
 quality checks pass.
+
+---
+
+## D54. The pipeline as a Databricks Job of SQL tasks
+
+**What:** `databricks.yml` is a Databricks Asset Bundle with one job, `us_grid_outage_pipeline`,
+of ten SQL file tasks on my SQL warehouse: `bronze`, `silver`, `gold_events`, `gold_storm_match`,
+`gold_reliability`, each followed by its `_gate` task. Each task depends on the one before and has
+one retry after a minute. A daily 06:00 UTC schedule is defined but `PAUSED`; email on failure is a
+commented example. `docs/runbook.md` covers deploy, run, repair and failed gates.
+- **Rendering: a render step, not committed rendered files.** A SQL file task cannot substitute the
+  `${section.key}` placeholders (D47). `scripts/render_job_sql.py` renders them with the same
+  `pipeline_config.render` and D53 splitter as `make pipeline` and writes `build/databricks/`
+  (gitignored); `make job-deploy` always renders before it deploys, and the bundle uploads only that
+  folder. Committed rendered files would be a second copy of every SQL file that could drift from
+  `sql/databricks/` and `config/pipeline.yml`.
+- **Task grouping.** The tasks run the nine pipeline files in exactly the order of
+  `run_databricks.SQL_FILES` (checked when rendering): Bronze = `01_bronze` + `01_bronze_sources`,
+  Silver = `02_silver_sources` + `02_silver`, gold_events = `03_gold_events` + `03_gold_coverage`,
+  gold_storm_match = `03_gold_storm_match`, gold_reliability = `03_gold_reliability` +
+  `03_gold_oe417_check`. Unlike the Statement Execution API, a SQL file task runs a file in one
+  session, so its `USE` and `SET TIME ZONE 'UTC'` statements apply.
+- **Gates.** Each gate checks the exact row count of every table its own task built, then runs
+  checks from `90_quality_checks.sql`: Bronze and Silver checks in their layer's gate, each Gold
+  check in the gate of the last task that builds a table it reads (most Gold checks read several
+  Gold tables, so they land in the last gate). Every check of the file runs exactly once. Results
+  go to a staging table `quality_gate_staging` (overwritten by every gate) and are appended to
+  `gold_quality_results` (engine `databricks`); `raise_error()` then fails the task when any check
+  failed, so the later tasks are skipped.
+- **CLI without a global install.** `scripts/install_databricks_cli.py` downloads the pinned
+  Databricks CLI release (1.24.0) into `.tools/` after checking its SHA-256 against the release
+  checksums. `scripts/databricks_cli.py` passes the host, token and warehouse id from `.env` as
+  environment variables, so nothing is written to `~/.databrickscfg`.
+- The bundle target is not in development mode, which would rename the job per user and force the
+  schedule paused, leaving `pause_status` no longer the single switch.
+- `make pipeline` stays: it also converts and uploads the raw files, which the job assumes are
+  already in the volume, and its verify step compares counts, detail checks and the top 10.
+
+**Why:** A job gives scheduling, retries, task-level repair and a run history in the workspace,
+while the SQL stays the single source in `sql/databricks/`. The paused schedule protects the Free
+Edition quota.
+
+**Rows affected:** none in the pipeline tables. Tested first in DuckDB (`tests/test_job_sql.py`):
+the rendered task files run in job order on the fixture give the same 43 tables, row for row, as
+the pipeline files; every gate passes; and a wrong expected count for `gold_event_storm_match`
+stops the job at `gold_storm_match_gate`. One table is new in `workspace.outages`,
+`quality_gate_staging`, and each job run appends 154 rows to `gold_quality_results` (the 111
+checks plus one task row count for each of the 43 tables).
 
 ---
 
