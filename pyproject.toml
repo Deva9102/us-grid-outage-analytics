@@ -20,3 +20,29 @@ dependencies = [
     "snowflake-connector-python>=5.2.0",
     "xlrd>=2.0.2",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+    "ruff>=0.17.6",
+    "sqlfluff>=4.5.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["scripts", "tests"]
+addopts = "-m 'not slow' --import-mode=importlib"
+markers = ["slow: full-data checks on data/raw/ (run with: uv run pytest -m slow)"]
+
+[tool.ruff]
+line-length = 140
+target-version = "py314"
+src = ["scripts", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["pipeline_config", "pipeline_log", "sql_dialect", "duckdb_pipeline", "run_databricks", "quality_checks",
+                     "download_utils", "raw_convert", "census_regions", "noaa_state_codes", "storm_event_severity",
+                     "sqlfluff_config", "test_silver_duckdb", "test_gold_events_duckdb", "conftest"]
