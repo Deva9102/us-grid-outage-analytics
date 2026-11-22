@@ -1,5 +1,7 @@
 # US Power Outages & Storm Impact
 
+[![CI](https://github.com/Deva9102/us-grid-outage-analytics/actions/workflows/ci.yml/badge.svg)](https://github.com/Deva9102/us-grid-outage-analytics/actions/workflows/ci.yml)
+
 ## Overview
 
 ## Questions I Answer
@@ -22,7 +24,11 @@ read it, so I change values there and nowhere else.
 | `make setup` | Installs the uv environment and validates `config/pipeline.yml`. |
 | `make download` | Downloads every raw source into `data/raw/<source>/<year>/` (folders are created by the scripts). |
 | `make profile` | Profiles the raw files; the results feed `docs/data_profile.md`. |
-| `make test` | Config test, then the DuckDB tests that run the real Databricks SQL on local samples. No Databricks needed. |
+| `make test` | Fast pytest suite (about 1 second): the real Databricks SQL, rendered from `config/pipeline.yml`, runs in DuckDB on the small real sample in `tests/fixtures/` and is checked against exact expected values, including all quality gates. No Databricks or downloads needed. |
+| `make test-slow` | The full-data DuckDB checks on `data/raw/` (several minutes). |
+| `make lint` | ruff on the Python, sqlfluff (Databricks dialect) on `sql/databricks/`. |
+| `make ci` | `lint` then `test`: the same checks GitHub Actions runs on every push and pull request. |
+| `make fixture` | Rebuilds `tests/fixtures/` from `data/raw/` (`scripts/build_test_fixture.py`). |
 | `make pipeline` | Converts and uploads the raw files, runs all SQL on Databricks, runs the quality gate after Bronze, Silver and Gold (a failed check stops the run), then verifies row counts and the top 10 events. |
 | `make quality` | Runs every check in `sql/databricks/90_quality_checks.sql` and appends the results to `gold_quality_results`. `make quality ENGINE=duckdb` builds the pipeline locally and runs the same checks. |
 | `make export` | Writes the Gold tables to `data/gold_exports/` as CSV for Power BI, split by year when a file would exceed 50 MB. The CSVs are gitignored (D50). |

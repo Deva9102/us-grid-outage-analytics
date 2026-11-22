@@ -6,13 +6,17 @@ ENGINE  ?= databricks
 DUCKDB_FILE ?=
 DUCKDB_ARG := $(if $(DUCKDB_FILE),--duckdb-file $(DUCKDB_FILE),)
 
-.PHONY: help setup download profile test pipeline quality export all clean
+.PHONY: help setup download profile test test-slow lint ci fixture pipeline quality export all clean
 
 help:
 	@echo "make setup      install the uv environment and validate config/pipeline.yml"
 	@echo "make download   download every raw source into data/raw/<source>/<year>/"
 	@echo "make profile    profile the raw files (docs/data_profile*.md inputs)"
-	@echo "make test       config test plus DuckDB tests of the SQL on samples (no Databricks)"
+	@echo "make test       fast pytest suite: the real SQL on tests/fixtures/ in DuckDB (no Databricks)"
+	@echo "make test-slow  full-data DuckDB checks on data/raw/ (minutes)"
+	@echo "make lint       ruff on Python, sqlfluff on sql/databricks/"
+	@echo "make ci         the GitHub Actions checks: lint, then the fast tests"
+	@echo "make fixture    rebuild tests/fixtures/ from data/raw/"
 	@echo "make pipeline   convert, upload, run all SQL on Databricks with quality gates, verify"
 	@echo "make quality    run every quality check (ENGINE=databricks|duckdb, DUCKDB_FILE=path)"
 	@echo "make export     write Gold tables to data/gold_exports/ as CSV for Power BI"
@@ -37,10 +41,21 @@ profile:
 	$(PY) scripts/profile_sources.py
 
 test:
-	$(PY) scripts/test_config.py
-	$(PY) scripts/test_silver_duckdb.py
-	$(PY) scripts/test_gold_events_duckdb.py
-	$(PY) scripts/test_sources_duckdb.py --skip-gold
+	uv run pytest -q
+
+test-slow:
+	uv run pytest -m slow -q
+
+# --ignore-local-config --config .sqlfluff: read only the repo's sqlfluff config (D51).
+lint:
+	uv run ruff check scripts tests
+	$(PY) scripts/sqlfluff_config.py --check
+	uv run sqlfluff lint --ignore-local-config --config .sqlfluff sql/databricks
+
+ci: lint test
+
+fixture:
+	$(PY) scripts/build_test_fixture.py
 
 pipeline:
 	$(PY) scripts/run_databricks.py
@@ -55,4 +70,5 @@ all: setup download test pipeline quality export
 
 clean:
 	rm -rf logs
-	find scripts -name __pycache__ -type d -prune -exec rm -rf {} +
+	find scripts tests -name __pycache__ -type d -prune -exec rm -rf {} +
+	rm -rf .pytest_cache .ruff_cache

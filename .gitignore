@@ -7,3 +7,7 @@ __pycache__/
 logs/
 # Gold CSV exports are too large to commit (D50)
 data/gold_exports/*.csv
+# DuckDB spill files from local full-data runs
+.tmp/
+.pytest_cache/
+.ruff_cache/
