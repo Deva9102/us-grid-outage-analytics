@@ -24,7 +24,6 @@ import zipfile
 import openpyxl
 
 import pipeline_config
-
 from download_utils import RAW, FetchFailed, ManualFile, Report, fetch, remote_size
 
 PAGE = "https://www.eia.gov/electricity/data/eia861/"

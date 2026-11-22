@@ -25,14 +25,13 @@ from __future__ import annotations
 import argparse
 import re
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import openpyxl
 import requests
 import xlrd
 
 import pipeline_config
-
 from download_utils import HEADERS, RAW, FetchFailed, ManualFile, Report, fetch
 
 PAGE = "https://www.oe.netl.doe.gov/OE417_annual_summary.aspx"
@@ -139,7 +138,7 @@ def main() -> int:
                     fetch(url, dest, timeout=30)
                     note.write_text(
                         f"source: {label}\nurl: {url}\n"
-                        f"downloaded: {datetime.now(timezone.utc):%Y-%m-%d %H:%M} UTC\n"
+                        f"downloaded: {datetime.now(UTC):%Y-%m-%d %H:%M} UTC\n"
                     )
                     print(f"  {year}: downloaded from {label}")
                     existing = [dest]

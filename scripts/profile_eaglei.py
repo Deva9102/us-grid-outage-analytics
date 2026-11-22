@@ -59,7 +59,7 @@ def profile_year(con: duckdb.DuckDBPyConnection, year: int) -> dict:
     measure = next(c for c in CUSTOMERS_OUT_ALIASES if c in columns)
 
     null_sql = ", ".join(f'COUNT(*) - COUNT("{c}") AS "{c}"' for c in columns)
-    nulls = dict(zip(columns, con.execute(f"SELECT {null_sql} FROM t").fetchone()))
+    nulls = dict(zip(columns, con.execute(f"SELECT {null_sql} FROM t").fetchone(), strict=False))
 
     stats = con.execute(
         f"""
@@ -80,7 +80,7 @@ def profile_year(con: duckdb.DuckDBPyConnection, year: int) -> dict:
     ).fetchone()
     keys = ["row_count", "distinct_fips", "distinct_states", "min_ts", "max_ts", "distinct_ts",
             "max_out", "min_out", "avg_out", "negative_out", "zero_out"]
-    result = dict(zip(keys, stats))
+    result = dict(zip(keys, stats, strict=False))
 
     fips_lengths = con.execute(
         """

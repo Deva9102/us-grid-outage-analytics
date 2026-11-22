@@ -71,17 +71,20 @@ def report_storm_match(con) -> None:
     show(con, """SELECT event_year, COUNT(*) AS events, COUNT_IF(storm_type <> 'unmatched') AS matched,
                         ROUND(COUNT_IF(storm_type <> 'unmatched') / COUNT(*), 3) AS share_of_events,
                         ROUND(SUM(customer_hours_lost) / 1e6, 1) AS customer_hours_m,
-                        ROUND(SUM(CASE WHEN storm_type <> 'unmatched' THEN customer_hours_lost END) / SUM(customer_hours_lost), 3) AS share_of_customer_hours
+                        ROUND(SUM(CASE WHEN storm_type <> 'unmatched'
+                            THEN customer_hours_lost END) / SUM(customer_hours_lost), 3) AS share_of_customer_hours
                  FROM gold_event_storm_match GROUP BY 1 ORDER BY 1""")
     print("\nBy matched storm type (all years):")
     show(con, """SELECT storm_type, COUNT(*) AS events, ROUND(SUM(customer_hours_lost) / 1e6, 1) AS customer_hours_m,
-                        ROUND(SUM(customer_hours_lost) / (SELECT SUM(customer_hours_lost) FROM gold_event_storm_match), 3) AS share_of_customer_hours,
+                        ROUND(SUM(customer_hours_lost) / (SELECT SUM(customer_hours_lost)
+                            FROM gold_event_storm_match), 3) AS share_of_customer_hours,
                         ROUND(MEDIAN(duration_hours), 1) AS median_outage_hours
                  FROM gold_event_storm_match GROUP BY 1 ORDER BY customer_hours_m DESC LIMIT 20""")
     print("\nLargest-overlap type vs most severe overlapping type (matched events):")
     show(con, """SELECT COUNT_IF(storm_type <> 'unmatched') AS matched,
                         COUNT_IF(storm_type <> 'unmatched' AND storm_type <> most_severe_storm_type) AS best_is_not_most_severe,
-                        ROUND(SUM(CASE WHEN storm_type <> most_severe_storm_type THEN customer_hours_lost END) / 1e6, 1) AS their_customer_hours_m
+                        ROUND(SUM(CASE WHEN storm_type <> most_severe_storm_type
+                            THEN customer_hours_lost END) / 1e6, 1) AS their_customer_hours_m
                  FROM gold_event_storm_match""")
     print("\nAttribution rule (D41):")
     show(con, """SELECT COALESCE(attribution_rule, 'unmatched') AS rule, COUNT(*) AS events,
@@ -91,12 +94,14 @@ def report_storm_match(con) -> None:
     line = "s.end_utc + INTERVAL 1 HOUR        AS window_end"
     con.execute("CREATE OR REPLACE TABLE storm_match_no_d42 AS " + query.replace(line, "s.end_utc AS window_end"))
     print("\nD42 effect (window closes at NOAA end vs 1 hour later):")
-    show(con, """SELECT a.event_year, COUNT_IF(b.storm_type <> 'unmatched') AS without_d42, COUNT_IF(a.storm_type <> 'unmatched') AS with_d42,
+    show(con, """SELECT a.event_year, COUNT_IF(b.storm_type <> 'unmatched') AS without_d42,
+                        COUNT_IF(a.storm_type <> 'unmatched') AS with_d42,
                         COUNT_IF(a.storm_type <> 'unmatched') - COUNT_IF(b.storm_type <> 'unmatched') AS added
                  FROM gold_event_storm_match a JOIN storm_match_no_d42 b USING (event_id) GROUP BY 1 ORDER BY 1""")
     for name in ("storm_match_no_d42", "gold_event_storm_match"):
         print(f"  top-100 matched ({name}):",
-              one(con, f"SELECT COUNT_IF(storm_type <> 'unmatched') FROM (SELECT * FROM {name} ORDER BY customer_hours_lost DESC LIMIT 100)"))
+              one(con, f"SELECT COUNT_IF(storm_type <> 'unmatched') FROM (SELECT * FROM {name} ORDER BY customer_hours_lost DESC "
+                       "LIMIT 100)"))
     print("\nTop 10 events and their match:")
     show(con, """SELECT ROW_NUMBER() OVER (ORDER BY customer_hours_lost DESC) AS rk, event_id, county, state_abbr AS st,
                         strftime(event_start, '%Y-%m-%d') AS start_utc, ROUND(customer_hours_lost / 1e6, 1) AS ch_m,
@@ -105,7 +110,8 @@ def report_storm_match(con) -> None:
     check("Helene top-10 events attributed to Tropical Storm, not Flood (D41)", con.execute(
         """SELECT storm_type FROM (SELECT * FROM gold_event_storm_match ORDER BY customer_hours_lost DESC LIMIT 10)
            WHERE fips_code IN ('45045', '45083', '37021') ORDER BY fips_code""").fetchall() == [("Tropical Storm",)] * 3)
-    check("one storm-match row per outage event", one(con, "SELECT COUNT(*) FROM gold_event_storm_match") == one(con, "SELECT COUNT(*) FROM gold_outage_events")
+    check("one storm-match row per outage event", one(con, "SELECT COUNT(*) FROM "
+                                                           "gold_event_storm_match") == one(con, "SELECT COUNT(*) FROM gold_outage_events")
           and one(con, "SELECT COUNT(*) - COUNT(DISTINCT event_id) FROM gold_event_storm_match") == 0)
     check("no non-causal storm type is ever matched", one(con, """SELECT COUNT(*) FROM gold_event_storm_match m
           JOIN bronze_storm_event_severity s ON s.event_type = m.storm_type WHERE s.can_cause_outage <> 'Y'""") == 0)
@@ -134,9 +140,11 @@ def report_q3(con) -> None:
                    EXISTS (SELECT 1 FROM silver_storm_events s WHERE s.fips_code = um.fips_code
                            AND s.begin_utc - INTERVAL 12 HOUR < um.event_end AND s.end_utc > um.event_start) AS non_causal_overlap,
                    (SELECT MIN(ROUND(epoch(um.event_start - s.end_utc) / 3600, 1)) FROM silver_storm_events s
-                     WHERE s.fips_code = um.fips_code AND s.end_utc <= um.event_start AND s.end_utc > um.event_start - INTERVAL 3 DAY) AS hours_after_storm_end,
+                     WHERE s.fips_code = um.fips_code AND s.end_utc <= um.event_start
+                         AND s.end_utc > um.event_start - INTERVAL 3 DAY) AS hours_after_storm_end,
                    (SELECT MIN(ROUND(epoch(s.begin_utc - um.event_end) / 3600, 1)) FROM silver_storm_events s
-                     WHERE s.fips_code = um.fips_code AND s.begin_utc - INTERVAL 12 HOUR >= um.event_end AND s.begin_utc < um.event_end + INTERVAL 3 DAY) AS hours_before_storm_begin,
+                     WHERE s.fips_code = um.fips_code AND s.begin_utc - INTERVAL 12 HOUR >= um.event_end
+                         AND s.begin_utc < um.event_end + INTERVAL 3 DAY) AS hours_before_storm_begin,
                    EXISTS (SELECT 1 FROM silver_storm_events s WHERE s.fips_code = um.fips_code
                            AND s.begin_utc BETWEEN um.event_start - INTERVAL 7 DAY AND um.event_end + INTERVAL 7 DAY) AS storm_within_7_days
             FROM um
@@ -144,7 +152,8 @@ def report_q3(con) -> None:
         SELECT rk, event_id, county, st, start_utc, ch_m,
                CASE
                    WHEN non_causal_overlap THEN 'labels: only non-causal types overlap'
-                   WHEN hours_after_storm_end IS NOT NULL THEN 'time window: storm ended ' || CAST(hours_after_storm_end AS VARCHAR) || ' h before the outage'
+                   WHEN hours_after_storm_end IS NOT NULL
+                       THEN 'time window: storm ended ' || CAST(hours_after_storm_end AS VARCHAR) || ' h before the outage'
                    WHEN hours_before_storm_begin IS NOT NULL THEN 'time window: storm began after the outage ended'
                    WHEN storm_within_7_days THEN 'time window: storm within 7 days only'
                    WHEN st = 'PR' THEN 'geography: PREPA region, NOAA records other municipios'
@@ -172,7 +181,8 @@ def report_reliability(con) -> None:
     show(con, """SELECT year, census_region, state_abbr AS st, ROUND(outage_hours_per_1000_customers) AS hours_per_1000
                  FROM gold_state_reliability WHERE region_rank = 1 ORDER BY year, census_region""")
     check("state ranks run 1..n per year without gaps at the top",
-          con.execute("SELECT year, MIN(national_rank) FROM gold_state_reliability GROUP BY 1 ORDER BY 1").fetchall() == [(2022, 1), (2023, 1), (2024, 1)])
+          con.execute("SELECT year, MIN(national_rank) FROM gold_state_reliability GROUP BY 1 ORDER BY "
+                      "1").fetchall() == [(2022, 1), (2023, 1), (2024, 1)])
     print("\n=== County reliability (D38, D44: 50 states and DC), top 5 per year ===")
     show(con, """SELECT year, national_rank AS rk, fips_code, county, state_abbr AS st, customers,
                         ROUND(outage_hours_per_1000_customers) AS hours_per_1000
@@ -199,12 +209,15 @@ def report_reliability(con) -> None:
           == [("48015", 7), ("48473", 8)])
     check("D46 exclusions file is empty, so no reviewed exclusions apply",
           one(con, "SELECT COUNT(*) FROM gold_county_ranking_footnotes WHERE footnote_reason LIKE '%D46%'") == 0)
-    check("Austin TX 2023 stays ranked #1", one(con, "SELECT national_rank FROM gold_county_reliability WHERE fips_code = '48015' AND year = 2023") == 1)
-    check("every unranked county-year is in the footnote list", one(con, "SELECT COUNT(*) FROM gold_county_reliability WHERE NOT ranking_eligible")
+    check("Austin TX 2023 stays ranked #1", one(con, "SELECT national_rank FROM gold_county_reliability WHERE fips_code = '48015' AND "
+                                                     "year = 2023") == 1)
+    check("every unranked county-year is in the footnote list", one(con, "SELECT COUNT(*) FROM gold_county_reliability WHERE NOT "
+                                                                         "ranking_eligible")
           == one(con, "SELECT COUNT(*) FROM gold_county_ranking_footnotes"))
     check("reporting-unit outage hours add up to Gold event customer-hours",
           abs(one(con, "SELECT SUM(customer_hours_lost) FROM gold_unit_reliability")
-              - one(con, "SELECT SUM(customer_hours_lost) FROM gold_outage_events WHERE fips_code IN (SELECT fips_code FROM dim_county_customers)")) < 1)
+              - one(con, "SELECT SUM(customer_hours_lost) FROM gold_outage_events WHERE fips_code IN (SELECT fips_code FROM "
+                         "dim_county_customers)")) < 1)
 
     print("\n=== Utility reliability (D39) ===")
     show(con, """SELECT data_year, size_band, COUNT(*) AS utilities, COUNT(rank_saidi_without_med) AS ranked_saidi_without_med
@@ -215,13 +228,16 @@ def report_reliability(con) -> None:
                         utilities_in_band AS band_size
                  FROM gold_utility_reliability WHERE is_eversource_or_national_grid ORDER BY utility_name, data_year""")
     check("only IEEE 1366 reporters are ranked",
-          one(con, "SELECT COUNT(*) FROM gold_utility_reliability u JOIN silver_utility_reliability s USING (data_year, utility_number, state_abbr) WHERE s.reporting_standard <> 'IEEE 1366'") == 0)
-    check("other-standard utilities are listed separately (704 rows)", one(con, "SELECT COUNT(*) FROM gold_utility_reliability_other") == 704)
+          one(con, "SELECT COUNT(*) FROM gold_utility_reliability u JOIN silver_utility_reliability s USING (data_year, "
+                   "utility_number, state_abbr) WHERE s.reporting_standard <> 'IEEE 1366'") == 0)
+    check("other-standard utilities are listed separately (704 "
+          "rows)", one(con, "SELECT COUNT(*) FROM gold_utility_reliability_other") == 704)
     print("\nRows flagged as source errors (not ranked):")
     show(con, """SELECT data_year, utility_number, utility_name, customers, saidi_with_med, saidi_without_med, data_quality_flag,
                         rank_saidi_without_med FROM gold_utility_reliability WHERE data_quality_flag IS NOT NULL""")
     check("only NSTAR 2023 is flagged, and it has no rank", con.execute(
-        "SELECT data_year, utility_number, rank_saidi_without_med, rank_saidi_with_med FROM gold_utility_reliability WHERE data_quality_flag IS NOT NULL"
+        "SELECT data_year, utility_number, rank_saidi_without_med, rank_saidi_with_med FROM gold_utility_reliability WHERE "
+        "data_quality_flag IS NOT NULL"
     ).fetchall() == [(2023, "54913", None, None)])
 
 
@@ -231,12 +247,14 @@ def report_oe417(con) -> None:
     print("\nBy customers-affected band (checkable = has a time and a county):")
     show(con, """SELECT customers_band, COUNT(*) AS incidents, COUNT_IF(match_status IN ('matched', 'not matched')) AS checkable,
                         COUNT_IF(match_status = 'matched') AS matched,
-                        ROUND(COUNT_IF(match_status = 'matched') / NULLIF(COUNT_IF(match_status IN ('matched', 'not matched')), 0), 3) AS agreement
+                        ROUND(COUNT_IF(match_status = 'matched') / NULLIF(COUNT_IF(match_status IN ('matched', 'not matched')), 0),
+                            3) AS agreement
                  FROM gold_oe417_check GROUP BY 1 ORDER BY 1""")
     print("\nBy cause category:")
     show(con, """SELECT event_category, COUNT(*) AS incidents, COUNT_IF(match_status IN ('matched', 'not matched')) AS checkable,
                         COUNT_IF(match_status = 'matched') AS matched,
-                        ROUND(COUNT_IF(match_status = 'matched') / NULLIF(COUNT_IF(match_status IN ('matched', 'not matched')), 0), 3) AS agreement
+                        ROUND(COUNT_IF(match_status = 'matched') / NULLIF(COUNT_IF(match_status IN ('matched', 'not matched')), 0),
+                            3) AS agreement
                  FROM gold_oe417_check GROUP BY 1 ORDER BY 2 DESC""")
     print("\nMatched incidents with 1,000+ customers: OE-417 customers vs EAGLE-I summed county peaks:")
     show(con, """SELECT COUNT(*) AS incidents, ROUND(MEDIAN(eaglei_peak_customers_out / customers_affected), 2) AS median_ratio,
@@ -258,10 +276,12 @@ def expected(con) -> None:
                  UNION ALL SELECT 'gold_utility_reliability', COUNT(*) FROM gold_utility_reliability
                  UNION ALL SELECT 'gold_utility_reliability_other', COUNT(*) FROM gold_utility_reliability_other
                  UNION ALL SELECT 'gold_oe417_check', COUNT(*) FROM gold_oe417_check""")
-    show(con, "SELECT CAST(event_year AS VARCHAR), CAST(COUNT_IF(storm_type <> 'unmatched') AS VARCHAR) FROM gold_event_storm_match GROUP BY 1 ORDER BY 1")
+    show(con, "SELECT CAST(event_year AS VARCHAR), CAST(COUNT_IF(storm_type <> 'unmatched') AS VARCHAR) FROM gold_event_storm_match "
+              "GROUP BY 1 ORDER BY 1")
     show(con, "SELECT CAST(year AS VARCHAR), state_abbr FROM gold_state_reliability WHERE national_rank = 1 ORDER BY 1")
     show(con, "SELECT match_status, CAST(COUNT(*) AS VARCHAR) FROM gold_oe417_check GROUP BY 1 ORDER BY 1")
-    show(con, "SELECT CAST(year AS VARCHAR), CAST(COUNT_IF(ranking_eligible) AS VARCHAR) FROM gold_county_reliability GROUP BY 1 ORDER BY 1")
+    show(con, "SELECT CAST(year AS VARCHAR), CAST(COUNT_IF(ranking_eligible) AS VARCHAR) FROM gold_county_reliability GROUP BY 1 "
+              "ORDER BY 1")
 
 
 def main() -> None:

@@ -66,8 +66,10 @@ def report_eia(con) -> None:
         data = one(con, f"SELECT COUNT(*) FROM {table} WHERE sheet_name IN ({sheets}) AND regexp_matches(col_01, '^[0-9]{{4}}$')")
         rule(f"{table}: all rows -> sheets used (D32)", total, in_sheets)
         rule(f"{table}: sheets used -> data rows, 4-digit year (D32)", in_sheets, data)
-    sales_data = one(con, "SELECT COUNT(*) FROM bronze_eia861_sales WHERE sheet_name IN ('States','Territories') AND regexp_matches(col_01, '^[0-9]{4}$')")
-    sales_acd = one(con, "SELECT COUNT(*) FROM bronze_eia861_sales WHERE sheet_name IN ('States','Territories') AND regexp_matches(col_01, '^[0-9]{4}$') AND TRIM(col_04) IN ('A','C','D')")
+    sales_data = one(con, "SELECT COUNT(*) FROM bronze_eia861_sales WHERE sheet_name IN ('States','Territories') AND "
+                          "regexp_matches(col_01, '^[0-9]{4}$')")
+    sales_acd = one(con, "SELECT COUNT(*) FROM bronze_eia861_sales WHERE sheet_name IN ('States','Territories') AND "
+                         "regexp_matches(col_01, '^[0-9]{4}$') AND TRIM(col_04) IN ('A','C','D')")
     rule("sales data rows -> Parts A, C, D only (D23)", sales_data, sales_acd)
     print("\nsilver_utility_reliability by year and standard:")
     show(con, """SELECT data_year, reporting_standard, COUNT(*) AS rows, COUNT(customers) AS with_sales_customers
@@ -80,7 +82,8 @@ def report_eia(con) -> None:
     show(con, """SELECT utility_name, state_abbr, reporting_standard, customers, size_band, saidi_with_med, saidi_without_med
                  FROM silver_utility_reliability
                  WHERE data_year = 2024 AND regexp_matches(utility_name,
-                   '(?i)(nstar|connecticut light|public service co of nh|massachusetts electric|nantucket electric|niagara mohawk|narragansett)')
+                   '(?i)(nstar|connecticut light|public service co of nh|massachusetts electric|'
+                   || 'nantucket electric|niagara mohawk|narragansett)')
                  ORDER BY utility_name""")
     check("silver_utility_reliability is unique per utility, state, year",
           one(con, "SELECT COUNT(*) - COUNT(DISTINCT (data_year, utility_number, state_abbr)) FROM silver_utility_reliability") == 0)
@@ -125,7 +128,8 @@ def report_noaa(con) -> None:
     check("silver_storm_events unique per event_id, fips_code",
           one(con, "SELECT COUNT(*) - COUNT(DISTINCT (event_id, fips_code)) FROM silver_storm_events") == 0)
     check("event_weight sums to 1 per event",
-          one(con, "SELECT COUNT(*) FROM (SELECT event_id, SUM(event_weight) s FROM silver_storm_events GROUP BY 1) WHERE ABS(s - 1) > 1e-9") == 0)
+          one(con, "SELECT COUNT(*) FROM (SELECT event_id, SUM(event_weight) s FROM silver_storm_events GROUP BY 1) WHERE ABS(s - 1) "
+                   "> 1e-9") == 0)
     check("every event is placed or unplaced, not both",
           one(con, "SELECT COUNT(*) FROM silver_storm_events_unplaced u JOIN silver_storm_events s USING (event_id)") == 0
           and placed + one(con, "SELECT COUNT(*) FROM silver_storm_events_unplaced") == det)
@@ -170,14 +174,16 @@ def report_oe417(con) -> None:
                         COUNT(*) FILTER (WHERE primary_state IS NULL) AS no_state,
                         COUNT(*) FILTER (WHERE county_count > 0) AS with_counties,
                         COUNT(*) FILTER (WHERE begin_utc IS NULL) AS begin_utc_null,
-                        COUNT(*) FILTER (WHERE begin_local IS NOT NULL AND primary_state IS NOT NULL AND begin_utc IS NULL) AS conversion_failed
+                        COUNT(*) FILTER (WHERE begin_local IS NOT NULL AND primary_state IS NOT NULL
+                            AND begin_utc IS NULL) AS conversion_failed
                  FROM silver_oe417""")
     print("\nOffset applied (begin_utc - begin_local, hours):")
     show(con, """SELECT CAST(epoch(begin_utc - begin_local) / 3600 AS INT) AS offset_hours, COUNT(*) AS incidents
                  FROM silver_oe417 WHERE begin_utc IS NOT NULL GROUP BY 1 ORDER BY 1""")
     print("\nEvent categories (D24):")
     show(con, "SELECT event_category, COUNT(*) AS incidents FROM silver_oe417 GROUP BY 1 ORDER BY 2 DESC")
-    check("every OE-417 event type maps to a category", one(con, "SELECT COUNT(*) FROM silver_oe417 WHERE event_category = 'unmapped'") == 0)
+    check("every OE-417 event type maps to a category", one(con, "SELECT COUNT(*) FROM silver_oe417 WHERE event_category = "
+                                                                 "'unmapped'") == 0)
     check("silver_oe417 has one row per incident", one(con, "SELECT COUNT(*) - COUNT(DISTINCT incident_id) FROM silver_oe417") == 0)
     check("OE-417 incidents 2022 = 390, 2023 = 348", con.execute(
         "SELECT report_year, COUNT(*) FROM silver_oe417 GROUP BY 1 ORDER BY 1").fetchall() == [(2022, 390), (2023, 348)])
@@ -217,7 +223,7 @@ def iterate_floors(con) -> dict[str, int]:
     for st, counties in states.items():
         eia = counties[0][3]
         floored: set[str] = set()
-        for n in range(1, len(counties) + 2):
+        for n in range(1, len(counties) + 2):  # noqa: B007 (n is the number of rounds, read after the loop)
             rest = [(f, d) for f, d, pk, _ in counties if f not in floored]
             k = (eia - sum(pk for f, d, pk, _ in counties if f in floored)) / sum(d for _, d in rest)
             below = {f for f, d, pk, _ in counties if f not in floored and k * d < pk}
@@ -310,7 +316,8 @@ def gold_effect(con) -> None:
         con.execute(f"CREATE OR REPLACE TABLE {name} AS {sql}")
     for name, _, _ in silver.SILVER_STEPS[:-1]:
         con.execute(f"DROP TABLE {name}")
-    show(con, "SELECT year, COUNT(*) AS rows, COUNT(*) FILTER (WHERE exceeds_customers) AS exceeds FROM silver_outages GROUP BY 1 ORDER BY 1")
+    show(con, "SELECT year, COUNT(*) AS rows, COUNT(*) FILTER (WHERE exceeds_customers) AS exceeds FROM silver_outages GROUP BY 1 "
+              "ORDER BY 1")
 
     print("\n=== Gold events for D13, D21 and D35 denominators ===")
     for i, mode in enumerate(("d13", "d21", "d35")):
@@ -357,7 +364,8 @@ def gold_effect(con) -> None:
         WITH b AS (SELECT *, ROW_NUMBER() OVER (ORDER BY customer_hours_lost DESC) rk FROM gold_outage_events_d13 QUALIFY rk <= 10),
         peaks AS (SELECT b.rk, b.event_id, b.fips_code, b.county, b.state_abbr, b.customer_hours_lost,
                          arg_max(s.reading_time, s.customers_out) AS peak_time
-                  FROM b JOIN silver_outages s ON s.fips_code = b.fips_code AND s.reading_time >= b.event_start AND s.reading_time < b.event_end
+                  FROM b JOIN silver_outages s ON s.fips_code = b.fips_code AND s.reading_time >= b.event_start
+                      AND s.reading_time < b.event_end
                   GROUP BY ALL),
         m AS (SELECT *, ROW_NUMBER() OVER (ORDER BY customer_hours_lost DESC) rk FROM gold_outage_events_d21),
         a AS (SELECT *, ROW_NUMBER() OVER (ORDER BY customer_hours_lost DESC) rk FROM gold_outage_events_d35)

@@ -64,7 +64,10 @@ def bronze_sources(con: duckdb.DuckDBPyConnection) -> None:
     ref = REPO_ROOT / "data" / "reference"
     noaa = sorted((RAW / "noaa_storm_events").rglob("StormEvents_details-*.csv.gz"))
     zones = sorted((RAW / "nws_zone_county").rglob("bp*.dbx"))
-    lst = lambda paths: "[" + ", ".join(f"'{p.as_posix()}'" for p in paths) + "]"
+
+    def lst(paths: list[Path]) -> str:
+        return "[" + ", ".join(f"'{p.as_posix()}'" for p in paths) + "]"
+
     con.execute(f"""
         CREATE OR REPLACE VIEW bronze_noaa_storm_events AS
         SELECT * EXCLUDE (filename), filename AS source_file
@@ -92,7 +95,8 @@ def bronze_sources(con: duckdb.DuckDBPyConnection) -> None:
                        ("bronze_state_time_zones", "state_time_zones.csv"),
                        ("bronze_storm_event_severity", "storm_event_severity.csv"),
                        ("bronze_ranking_exclusions", "ranking_exclusions.csv")):
-        con.execute(f"CREATE OR REPLACE VIEW {name} AS SELECT * FROM read_csv('{(ref / file).as_posix()}', all_varchar = true, header = true)")
+        con.execute(f"CREATE OR REPLACE VIEW {name} AS SELECT * FROM read_csv('{(ref / file).as_posix()}', all_varchar = true, header "
+                    "= true)")
 
 
 D21_SCALING = "CASE WHEN s.d13_customers > ${calibration.state_ratio} * e.customers THEN s.d13_customers / e.customers ELSE 1.0 END"
@@ -226,7 +230,8 @@ def run_silver(con) -> None:
     print("\nsilver_outages schema:")
     show(con, "SELECT column_name, column_type FROM (DESCRIBE silver_outages)")
     print("\nRows by Census region:")
-    show(con, "SELECT census_region, COUNT(*) AS row_count, COUNT(DISTINCT fips_code) AS counties FROM silver_outages GROUP BY 1 ORDER BY 2 DESC")
+    show(con, "SELECT census_region, COUNT(*) AS row_count, COUNT(DISTINCT fips_code) AS counties FROM silver_outages GROUP BY 1 "
+              "ORDER BY 2 DESC")
     print("\nLargest overcounts in the sample:")
     show(con, """
         SELECT s.fips_code, s.county, s.state_abbr, MAX(s.customers_out) AS max_out, k.customers,
@@ -310,7 +315,8 @@ def main() -> None:
     run_silver(con)
     if args.month == "all":
         print("\nRows by year:")
-        show(con, "SELECT year, COUNT(*) AS row_count, COUNT(*) FILTER (WHERE exceeds_customers) AS exceeds_rows FROM silver_outages GROUP BY 1 ORDER BY 1")
+        show(con, "SELECT year, COUNT(*) AS row_count, COUNT(*) FILTER (WHERE exceeds_customers) AS exceeds_rows FROM silver_outages "
+                  "GROUP BY 1 ORDER BY 1")
 
     # 3. D7 synthetic check.
     run_d7_synthetic(con)

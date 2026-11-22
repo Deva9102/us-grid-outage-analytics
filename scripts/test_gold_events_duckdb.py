@@ -154,7 +154,7 @@ def synthetic_check() -> None:
     for row in got:
         print("  " + "  ".join(str(v) for v in row))
     if not ok:
-        for g, e in zip(got_norm, expected):
+        for g, e in zip(got_norm, expected, strict=False):
             if g != e:
                 print(f"  got      {g}\n  expected {e}")
 

@@ -39,7 +39,7 @@ import os
 import re
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import duckdb
@@ -253,7 +253,7 @@ def check_safe(stmt: str) -> None:
 
 
 def summary(stmt: str) -> str:
-    lines = [l.strip() for l in strip_comments(stmt).splitlines() if l.strip()]
+    lines = [line.strip() for line in strip_comments(stmt).splitlines() if line.strip()]
     return " ".join(lines)[:110] + ("..." if len(" ".join(lines)) > 110 else "")
 
 
@@ -394,7 +394,7 @@ def step_sql(w: WorkspaceClient, warehouse_id: str, log: RunLog) -> None:
     import quality_checks
 
     check_years()
-    run_ts = datetime.now(timezone.utc).replace(microsecond=0, tzinfo=None)
+    run_ts = datetime.now(UTC).replace(microsecond=0, tzinfo=None)
     for i, name in enumerate(SQL_FILES):
         statements = split_statements(pipeline_config.render((SQL_DIR / name).read_text()))
         print(f"\n{name}: {len(statements)} statements")
@@ -430,7 +430,7 @@ def step_sql(w: WorkspaceClient, warehouse_id: str, log: RunLog) -> None:
 def step_quality(w: WorkspaceClient, warehouse_id: str, log: RunLog) -> int:
     import quality_checks
 
-    run_ts = datetime.now(timezone.utc).replace(microsecond=0, tzinfo=None)
+    run_ts = datetime.now(UTC).replace(microsecond=0, tzinfo=None)
     try:
         return len(quality_checks.databricks_gate(w, warehouse_id, quality_checks.LAYERS, log, run_ts))
     except quality_checks.QualityFailed as e:
@@ -468,7 +468,7 @@ def step_verify(w: WorkspaceClient, warehouse_id: str) -> int:
                CAST(ROUND(customer_hours_lost) AS BIGINT)
         FROM gold_outage_events ORDER BY customer_hours_lost DESC LIMIT 10
     """)
-    for k, (row, (exp_id, exp_hours)) in enumerate(zip(rows, EXPECTED_TOP10), 1):
+    for k, (row, (exp_id, exp_hours)) in enumerate(zip(rows, EXPECTED_TOP10, strict=False), 1):
         event_id, county, st, start, end, hours = row
         ok = event_id == exp_id and abs(int(hours) - exp_hours) <= 1
         print(f"  {k:>2} {event_id} {county:<12} {st} {start[:16]} -> {end[:16]} {int(hours):>13,}  "

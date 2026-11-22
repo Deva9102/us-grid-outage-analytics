@@ -25,7 +25,6 @@ import duckdb
 import requests
 
 import pipeline_config
-
 from download_utils import HEADERS, RAW, FetchFailed, ManualFile, Report, fetch, remote_size
 
 BASE = "https://www.ncei.noaa.gov/pub/data/swdi/stormevents/csvfiles/"

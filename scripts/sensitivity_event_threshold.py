@@ -192,7 +192,7 @@ def main() -> None:
 
         h, m = event_at(ev, PINELLAS, helene_t), event_at(ev, PINELLAS, milton_t)
         w1, w2 = event_at(ev, WAYNE, ice_t), event_at(ev, WAYNE, march_t)
-        b1, b2 = event_at(ev, HARRIS, beryl_t), event_at(ev, HARRIS, beryl_end)
+        b1 = event_at(ev, HARRIS, beryl_t)
         pinellas_split = h is not None and m is not None and h != m
         wayne_split = w1 is not None and w2 is not None and w1 != w2
         # Beryl is whole when the event at the peak lasts at least until the main body ends.

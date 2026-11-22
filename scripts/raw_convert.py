@@ -30,6 +30,7 @@ Usage:
 from __future__ import annotations
 
 import datetime as dt
+import os
 from pathlib import Path
 
 import openpyxl
@@ -74,7 +75,8 @@ def cell_text(value) -> str | None:
 def workbook_rows(path: Path):
     """Yield (sheet_name, row_number, [cell text]) for every row of every sheet."""
     if path.suffix.lower() == ".xls":
-        book = xlrd.open_workbook(path, logfile=open("/dev/null", "w"))
+        with open(os.devnull, "w") as devnull:
+            book = xlrd.open_workbook(path, logfile=devnull)
         for sheet in book.sheets():
             for r in range(sheet.nrows):
                 cells = []

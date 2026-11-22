@@ -18,7 +18,7 @@ import logging
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -38,7 +38,7 @@ class Step:
 class RunLog:
     def __init__(self, name: str) -> None:
         LOG_DIR.mkdir(exist_ok=True)
-        self.started = datetime.now(timezone.utc)
+        self.started = datetime.now(UTC)
         self.path = LOG_DIR / f"{name}_{self.started:%Y%m%d_%H%M%S}.log"
         self.steps: list[Step] = []
         self.logger = logging.getLogger(f"pipeline.{name}.{id(self)}")
@@ -54,7 +54,7 @@ class RunLog:
 
     @contextmanager
     def step(self, name: str):
-        s = Step(name=name, started=datetime.now(timezone.utc))
+        s = Step(name=name, started=datetime.now(UTC))
         self.steps.append(s)
         self.logger.info("step start  %s", name)
         t0 = time.perf_counter()

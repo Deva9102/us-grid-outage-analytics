@@ -19,6 +19,7 @@ Usage:
 
 from __future__ import annotations
 
+import os
 import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -28,7 +29,6 @@ import pandas as pd
 import xlrd
 
 import pipeline_config
-
 import test_gold_events_duckdb as gold
 import test_silver_duckdb as silver
 
@@ -334,7 +334,7 @@ def profile_noaa(con, md: list[str], zv: pd.DataFrame) -> dict:
                COUNT(DISTINCT EVENT_ID) FILTER (WHERE EVENT_ID IN (SELECT EVENT_ID FROM hit)) AS with_eaglei_event
         FROM ev GROUP BY 1 ORDER BY 2 DESC
     """)
-    fwd["match_rate"] = [pct(a, b) for a, b in zip(fwd.with_eaglei_event, fwd.resolved_events)]
+    fwd["match_rate"] = [pct(a, b) for a, b in zip(fwd.with_eaglei_event, fwd.resolved_events, strict=False)]
     tot_r, tot_h = int(fwd.resolved_events.sum()), int(fwd.with_eaglei_event.sum())
 
     rev = q(con, """
@@ -355,7 +355,7 @@ def profile_noaa(con, md: list[str], zv: pd.DataFrame) -> dict:
             UNION ALL SELECT event_id, 'all events' FROM ranked
         ) GROUP BY 1 ORDER BY 2
     """)
-    rev["match_rate"] = [pct(a, b) for a, b in zip(rev.with_noaa_event, rev.eaglei_events)]
+    rev["match_rate"] = [pct(a, b) for a, b in zip(rev.with_noaa_event, rev.eaglei_events, strict=False)]
     md += ["### Event-level match to EAGLE-I outage events", "",
            "NOAA to EAGLE-I: a resolved NOAA event (outage-relevant types only) matches when one of its "
            "counties has an EAGLE-I event overlapping [NOAA begin - 1 h, NOAA end + 12 h] in UTC. "
@@ -397,8 +397,10 @@ def profile_zones(con, md: list[str], zv: pd.DataFrame) -> None:
         WITH v AS (SELECT version, effective_from, LAG(version) OVER (ORDER BY effective_from) AS prev FROM zone_versions),
         keys AS (SELECT DISTINCT version, state || zone AS zone_key FROM zones)
         SELECT v.prev || ' -> ' || v.version AS change,
-               (SELECT COUNT(*) FROM keys a WHERE a.version = v.version AND a.zone_key NOT IN (SELECT zone_key FROM keys b WHERE b.version = v.prev)) AS zones_added,
-               (SELECT COUNT(*) FROM keys a WHERE a.version = v.prev AND a.zone_key NOT IN (SELECT zone_key FROM keys b WHERE b.version = v.version)) AS zones_removed
+               (SELECT COUNT(*) FROM keys a WHERE a.version = v.version
+                   AND a.zone_key NOT IN (SELECT zone_key FROM keys b WHERE b.version = v.prev)) AS zones_added,
+               (SELECT COUNT(*) FROM keys a WHERE a.version = v.prev
+                   AND a.zone_key NOT IN (SELECT zone_key FROM keys b WHERE b.version = v.version)) AS zones_removed
         FROM v WHERE v.prev IS NOT NULL ORDER BY v.effective_from
     """)))
     md += ["", "Time zone field: `TIME_ZONE` is a one- or two-letter NWS code per zone; it is not needed for "
@@ -486,7 +488,8 @@ def profile_eia(con, md: list[str]) -> dict:
                ieee_saifi_with_med AS saifi_with_med, ieee_saifi_without_med AS saifi_without_med
         FROM eia_rel
         WHERE data_year = '2024' AND regexp_matches(utility_name,
-            '(?i)(nstar|eversource|connecticut light|public service co of nh|western massachusetts|massachusetts electric|nantucket electric|niagara mohawk|narragansett|national grid|brooklyn union|keyspan)')
+            '(?i)(nstar|eversource|connecticut light|public service co of nh|western massachusetts|massachusetts electric|'
+            || 'nantucket electric|niagara mohawk|narragansett|national grid|brooklyn union|keyspan)')
         ORDER BY utility_name, state
     """)))
     md.append("")
@@ -576,7 +579,8 @@ def load_oe417(con) -> pd.DataFrame:
         files = sorted((RAW / "oe417" / str(y)).glob("*.xls*")) if (RAW / "oe417" / str(y)).exists() else []
         if not files:
             continue
-        book = xlrd.open_workbook(files[0], logfile=open("/dev/null", "w"))
+        with open(os.devnull, "w") as devnull:
+            book = xlrd.open_workbook(files[0], logfile=devnull)
         sh = book.sheet_by_index(0)
         hdr = next(r for r in range(sh.nrows) if "Date Event Began" in [str(sh.cell_value(r, c)).strip() for c in range(sh.ncols)])
         names = [str(sh.cell_value(hdr, c)).strip() for c in range(sh.ncols)]
@@ -600,8 +604,8 @@ def load_oe417(con) -> pd.DataFrame:
         m = re.fullmatch(r"(\d{1,2}):(\d{2})", t or "")
         return day + timedelta(hours=int(m.group(1)), minutes=int(m.group(2))) if m else day
 
-    df["begin"] = [dt(d, t) for d, t in zip(df["Date Event Began"], df["Time Event Began"])]
-    df["restored"] = [dt(d, t) for d, t in zip(df["Date of Restoration"], df["Time of Restoration"])]
+    df["begin"] = [dt(d, t) for d, t in zip(df["Date Event Began"], df["Time Event Began"], strict=False)]
+    df["restored"] = [dt(d, t) for d, t in zip(df["Date of Restoration"], df["Time of Restoration"], strict=False)]
     return df
 
 
@@ -617,14 +621,14 @@ def parse_area(area: str) -> list[tuple[str, list[str]]]:
 def profile_oe417(con, md: list[str]) -> dict:
     df = load_oe417(con)
     regions = con.execute("SELECT state_name, state_abbr FROM regions").fetchdf()
-    name_to_abbr = dict(zip(regions.state_name.str.lower(), regions.state_abbr))
+    name_to_abbr = dict(zip(regions.state_name.str.lower(), regions.state_abbr, strict=False))
     eag = con.execute("SELECT fips_code, county, state_abbr FROM eaglei_counties").fetchdf()
     lookup = {}
-    for f, c, s in zip(eag.fips_code, eag.county, eag.state_abbr):
+    for f, c, s in zip(eag.fips_code, eag.county, eag.state_abbr, strict=False):
         lookup.setdefault(f"{s}|{norm_county(c)}", f)
 
     rec_rows, named, matched_names, state_ok, state_total = [], 0, 0, 0, 0
-    for idx, area in zip(df.index, df["Area Affected"]):
+    for idx, area in zip(df.index, df["Area Affected"], strict=False):
         parsed = parse_area(area)
         fips, states = set(), set()
         for st, counties in parsed:
@@ -688,7 +692,7 @@ def profile_oe417(con, md: list[str]) -> dict:
     # Event-level match
     ev = con.execute("SELECT fips_code, event_start, event_end, customer_hours_lost FROM gold_outage_events").fetchdf()
     ev_by_fips = {f: g for f, g in ev.groupby("fips_code")}
-    st_of = dict(zip(eag.fips_code, eag.state_abbr))
+    st_of = dict(zip(eag.fips_code, eag.state_abbr, strict=False))
     ev["state"] = ev.fips_code.map(st_of)
     ev_by_state = {s: g for s, g in ev.groupby("state")}
     res, offsets = [], []
@@ -704,7 +708,8 @@ def profile_oe417(con, md: list[str]) -> dict:
             near = g[(g.event_start - r.begin).abs() <= pd.Timedelta(hours=12)]
             offsets += [((s - r.begin).total_seconds() / 3600) for s in near.event_start]
         elif r.states:
-            g = pd.concat([ev_by_state[s] for s in r.states if s in ev_by_state]) if any(s in ev_by_state for s in r.states) else ev.iloc[0:0]
+            frames = [ev_by_state[s] for s in r.states if s in ev_by_state]
+            g = pd.concat(frames) if frames else ev.iloc[0:0]
             level = "state only"
         else:
             res.append(("no location", False))
@@ -718,9 +723,9 @@ def profile_oe417(con, md: list[str]) -> dict:
     m.loc[cust_n.isna().values, "customers_affected"] = "unknown"
     by_cust = (m[m.level == "county"].groupby("customers_affected")
                .agg(rows=("hit", "size"), with_eaglei_event=("hit", "sum")).reset_index())
-    by_cust["match_rate"] = [pct(a, b) for a, b in zip(by_cust.with_eaglei_event, by_cust.rows)]
+    by_cust["match_rate"] = [pct(a, b) for a, b in zip(by_cust.with_eaglei_event, by_cust.rows, strict=False)]
     lvl = m.groupby("level").agg(rows=("hit", "size"), with_eaglei_event=("hit", "sum")).reset_index()
-    lvl["match_rate"] = [pct(a, b) for a, b in zip(lvl.with_eaglei_event, lvl.rows)]
+    lvl["match_rate"] = [pct(a, b) for a, b in zip(lvl.with_eaglei_event, lvl.rows, strict=False)]
     md += ["### Event-level match to EAGLE-I outage events", "",
            "A row matches when an EAGLE-I event in its matched counties (or, with no county, anywhere in its "
            "states) overlaps [begin date - 1 day, restoration date + 1 day]. Day-level windows because the "
@@ -772,12 +777,17 @@ def main() -> None:
 
     md += ["## 5. How each source joins to EAGLE-I", "",
            "| Source | Grain | Location key | Time | Join to EAGLE-I | Measured |", "|---|---|---|---|---|---|",
-           f"| NOAA, CZ_TYPE C | event x county | county FIPS (STATE_FIPS + CZ_FIPS) | local standard, offset in CZ_TIMEZONE | county FIPS + UTC time overlap | {pct(*noaa['c'])} of C events resolve |",
-           f"| NOAA, CZ_TYPE Z | event x zone | state + zone via NWS file in effect | same | zone -> counties (1:n), then as above | {pct(*noaa['z'])} of Z events resolve |",
+           "| NOAA, CZ_TYPE C | event x county | county FIPS (STATE_FIPS + CZ_FIPS) | local standard, offset in CZ_TIMEZONE | county "
+           f"FIPS + UTC time overlap | {pct(*noaa['c'])} of C events resolve |",
+           "| NOAA, CZ_TYPE Z | event x zone | state + zone via NWS file in effect | same | zone -> counties (1:n), then as above | "
+           f"{pct(*noaa['z'])} of Z events resolve |",
            "| NWS zone-county | zone x county x version | STATE + ZONE -> FIPS | effective dates per file | bridge only | see section 2 |",
-           f"| EIA-861 reliability / sales | utility x state x year | state code; utility number | annual | state level only | EAGLE-I / EIA customers {eia['sales_ratio'][0] / eia['sales_ratio'][1]:.3f} |",
-           f"| EIA-861 service territory | utility x county name x year | state + county name | annual | needs name -> FIPS crosswalk | {eia['terr'][-1][5]} of 2024 pairs match |",
-           f"| OE-417 | incident | free-text state and county names | local?, not stated | parsed names -> FIPS, day-level overlap | {pct(*oe['named'])} of named counties match |",
+           "| EIA-861 reliability / sales | utility x state x year | state code; utility number | annual | state level only | "
+           f"EAGLE-I / EIA customers {eia['sales_ratio'][0] / eia['sales_ratio'][1]:.3f} |",
+           "| EIA-861 service territory | utility x county name x year | state + county name | annual | needs name -> FIPS crosswalk "
+           f"| {eia['terr'][-1][5]} of 2024 pairs match |",
+           "| OE-417 | incident | free-text state and county names | local?, not stated | parsed names -> FIPS, day-level overlap | "
+           f"{pct(*oe['named'])} of named counties match |",
            ""]
     OUT.write_text("\n".join(md))
     print(f"Wrote {OUT.relative_to(REPO_ROOT)}")
