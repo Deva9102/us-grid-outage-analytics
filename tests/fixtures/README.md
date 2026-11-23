@@ -11,7 +11,7 @@ synthetic rows inside the tests, never in these files. Design and selection: `do
 
 | Folder | Source | Rows | Why these rows |
 |---|---|---|---|
-| `eaglei/<year>/` | EAGLE-I county outages | 624 / 195 / 4,044 / 192 | 13 counties in 5 windows (below), Monongalia WV and Harris in a sixth, plus one reading each for Kalawao HI and Norton city VA |
+| `eaglei/<year>/` | EAGLE-I county outages | 624 / 195 / 4,044 / 1,200 | 13 counties in 5 windows (below), Monongalia WV and Harris in a sixth, Ponce PR and Harris in a seventh, plus one reading each for Kalawao HI and Norton city VA |
 | `eaglei/metadata/MCC.csv` | EAGLE-I modeled customer counts | 15 | the fixture counties and the Grand Total row (D5) |
 | `noaa_storm_events/<year>/` | NOAA Storm Events details | 52 events | storms whose match window overlaps a fixture window in a fixture county, plus one water-area event |
 | `nws_zone_county/<year>/` | NWS zone-county correlation files | 305 | the zones of those storms, in all seven file versions |
@@ -32,6 +32,7 @@ Davis, Weber and Rich UT; Monongalia WV in the last window only.
 | 2024-06-15 20:00 to 06-16 03:00 | Rich UT readings above its customer count (D4, D45 footnote) |
 | 2024-07-08 00:00 to 07-12 00:00 | Hurricane Beryl: the Harris and Fort Bend feed dropouts (D19), Harris overcount (D4), Kauai's peak that sets its D35 floor |
 | 2024-12-31 12:00 to 2025-01-02 00:00 | Monongalia WV and Harris only: an outage from 2024-12-31 19:30 into 2025 that must stay one event when 2025 is loaded incrementally (D56, D57; `tests/test_incremental.py`) |
+| 2025-04-16 12:00 to 2025-04-21 18:00 | Ponce PR and Harris only: the Puerto Rico blackout, with 343 empty readings: a 15-hour run that is bridged into one event and a 71-hour run that ends it (D64; `tests/test_gold_events.py`) |
 
 Harris reports in every collected 15-minute slot of every window, so the only empty slots inside a
 window are real nationwide feed gaps. All Hawaii counties are present, so Hawaii's D21 calibration

@@ -19,7 +19,7 @@ def test_storm_match_on_fixture(rows):
     """) == [("48157-00001", "Thunderstorm Wind", "Thunderstorm Wind", "active_at_start", 2),
              ("48201-00001", "Thunderstorm Wind", "Thunderstorm Wind", "active_at_start", 3),
              ("54061-00001", "Thunderstorm Wind", "Thunderstorm Wind", "active_at_start", 7)]
-    assert rows("SELECT COUNT(*), COUNT(DISTINCT event_id) FROM gold_event_storm_match") == [(29, 29)]
+    assert rows("SELECT COUNT(*), COUNT(DISTINCT event_id) FROM gold_event_storm_match") == [(34, 34)]
 
 
 def test_storm_attribution_rules():
@@ -72,6 +72,7 @@ def test_state_coverage(rows):
         FROM gold_state_coverage WHERE eaglei_counties > 0 ORDER BY 1
     """) == [("CA", 1, 3799750, 16140825, 0.2354, False, "below_minimum", 1.0),
              ("HI", 5, 506989, 506988, 1.0, True, "covered", 1.317739),
+             ("PR", 1, 65292, None, None, False, "coverage_unknown", 1.0),
              ("TX", 2, 2039710, 14481051, 0.1409, False, "below_minimum", 1.0),
              ("UT", 5, 1074165, 1429521, 0.7514, True, "covered", 1.0),
              ("VA", 1, None, 4104032, None, False, "coverage_unknown", 1.0),
@@ -84,7 +85,8 @@ def test_unknown_coverage_is_not_ranked(rows):
     assert rows("""
         SELECT year, state_abbr, national_rank, footnote_reason FROM gold_state_reliability
         WHERE state_abbr = 'VA' ORDER BY year
-    """) == [(2024, "VA", None, "coverage_unknown")]  # Norton city is first reported in 2024 (D61)
+    """) == [(2024, "VA", None, "coverage_unknown"),  # Norton city is first reported in 2024 (D61)
+          (2025, "VA", None, "coverage_unknown")]
     assert rows("SELECT coverage_status, COUNT(*) FROM gold_state_coverage GROUP BY 1 ORDER BY 1") == [
         ("below_minimum", 2), ("coverage_unknown", 49), ("covered", 2)]
 
@@ -109,6 +111,13 @@ def test_county_ranking_footnotes(rows):
          "capped share 94.7%, peak 3.9x customers"),
         (2024, "51720", None, "no denominator (D9)", None),
         (2024, "54061", 5, "coverage_unknown", None),
+        # 2025 is a fixture year since W6 and W7 have 2025 events; the other counties are quiet in it.
+        (2025, "06037", 2, "state below 70% customer coverage (D22)", None),
+        (2025, "15005", 2, "denominator under 1,000 customers (D11)", None),
+        (2025, "48157", 2, "state below 70% customer coverage (D22)", None),
+        (2025, "48201", 1, "state below 70% customer coverage (D22)", None),
+        (2025, "51720", None, "no denominator (D9)", None),
+        (2025, "54061", 2, "coverage_unknown", None),
     ]
 
 
@@ -123,6 +132,9 @@ def test_county_ranks(rows):
         (2024, "15007", 3325.548, 1, 1), (2024, "15001", 235.798, 2, 2), (2024, "49057", 142.786, 3, 1),
         (2024, "15009", 105.753, 4, 3), (2024, "15003", 25.123, 5, 4), (2024, "49035", 2.376, 6, 2),
         (2024, "49011", 1.971, 7, 3), (2024, "49049", 0.0, 8, 4),
+        (2025, "15001", 0.0, 1, 1), (2025, "15003", 0.0, 1, 1), (2025, "15007", 0.0, 1, 1), (2025, "15009", 0.0, 1, 1),
+        (2025, "49011", 0.0, 1, 1), (2025, "49033", 0.0, 1, 1), (2025, "49035", 0.0, 1, 1), (2025, "49049", 0.0, 1, 1),
+        (2025, "49057", 0.0, 1, 1),
     ]
 
 
@@ -139,6 +151,9 @@ def test_state_ranks(rows):
         (2024, "CA", 0.0, None, None, d22), (2024, "HI", 279.842, 1, 1, None), (2024, "TX", 47386.023, None, None, d22),
         (2024, "UT", 16.209, 2, 2, None), (2024, "VA", None, None, None, "coverage_unknown"),
         (2024, "WV", 718.075, None, None, "coverage_unknown"),
+        (2025, "CA", 0.0, None, None, d22), (2025, "HI", 0.0, 1, 1, None), (2025, "TX", 37.886, None, None, d22),
+        (2025, "UT", 0.0, 1, 1, None), (2025, "VA", None, None, None, "coverage_unknown"),
+        (2025, "WV", 0.0, None, None, "coverage_unknown"),
     ]
 
 

@@ -85,12 +85,13 @@ def test_job_build_passes_every_gate(job):
     assert len(done) == 2 * len(render_job_sql.JOB_TASKS)
     failed = con.execute("SELECT check_name FROM gold_quality_results WHERE NOT passed").fetchall()
     assert failed == []
-    # The 115 checks (D52, plus D56: the 2025 Bronze count, two Gold counts, event numbering)
+    # The 119 checks (D52; D56: the 2025 Bronze count, two Gold counts, event numbering; D64: the
+    # empty-readings count, its two key checks and the new event columns)
     # plus one row per table in the task row counts.
     task_counts = con.execute(
         "SELECT COUNT(*) FROM gold_quality_results WHERE check_name LIKE 'task row count: %'").fetchone()[0]
     total = con.execute("SELECT COUNT(*) FROM gold_quality_results").fetchone()[0]
-    assert total - task_counts == 115
+    assert total - task_counts == 119
 
 
 def test_job_build_equals_the_pipeline_build(job, con):

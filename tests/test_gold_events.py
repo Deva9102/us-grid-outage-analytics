@@ -21,7 +21,7 @@ def test_thresholds_scale_with_county_size(rows):
         ("06037", 9499.375), ("15001", 334.7275), ("15003", 583.7025), ("15005", 100.0), ("15007", 100.0),
         ("15009", 279.265), ("48157", 1736.95), ("48201", 3362.325), ("49011", 330.995), ("49033", 100.0),
         ("49035", 1265.08), ("49049", 821.5375), ("49057", 265.2875), ("51720", 100.0),
-        ("54061", 138.7025)]
+        ("54061", 138.7025), ("72113", 163.23)]
 
 
 def test_nationwide_feed_gap_is_found(rows):
@@ -81,6 +81,9 @@ EVENTS = [
     ("48201-00002", "2024-05-23 18:00", "2024-05-24 12:00", 36, 19859, 105155, 105155, False, 9.0, 0.0),
     ("48201-00003", "2024-07-08 14:15", "2024-07-12 00:00", 317, 1660703, 85152728, 87051815, True, 0.0, 2.5),
     ("48201-00004", "2024-12-31 16:00", "2024-12-31 16:15", 1, 6978, 1745, 1745, False, 0.0, 0.0),
+    ("48201-00005", "2025-04-16 22:45", "2025-04-16 23:45", 4, 4500, 4490, 4490, False, 0.0, 0.0),
+    ("48201-00006", "2025-04-21 05:00", "2025-04-21 08:00", 12, 4837, 14229, 14229, False, 0.0, 0.0),
+    ("48201-00007", "2025-04-21 11:15", "2025-04-21 18:00", 27, 14099, 58558, 58558, False, 0.0, 0.0),
     ("49011-00001", "2024-07-10 23:45", "2024-07-11 00:30", 3, 348, 261, 261, False, 0.0, 0.0),
     ("49033-00001", "2024-06-15 23:00", "2024-06-15 23:45", 3, 3935, 754, 2374, True, 0.0, 0.0),
     ("49033-00002", "2024-06-16 00:45", "2024-06-16 01:00", 1, 168, 42, 42, False, 0.0, 0.0),
@@ -92,6 +95,10 @@ EVENTS = [
     # D57: one event from 2024-12-31 into 2025, cut at the end of window W6 (the full-data event ends
     # 2025-01-01 22:15 at the 0.25% threshold of the full-data denominator).
     ("54061-00001", "2024-12-31 19:30", "2025-01-02 00:00", 114, 8533, 39840, 39840, False, 0.0, 0.0),
+    # D64: the Puerto Rico blackout in the Ponce reporting unit, one event across 15 hours of empty
+    # readings; capped at the fixture's MCC denominator (65,292), which the readings exceed (D4).
+    ("72113-00001", "2025-04-16 15:00", "2025-04-18 16:45", 139, 194353, 1678559, 4060559, True, 0.0, 0.0),
+    ("72113-00002", "2025-04-21 15:30", "2025-04-21 18:00", 10, 5143, 5644, 5644, False, 0.0, 0.0),
 ]
 
 
@@ -115,7 +122,7 @@ def test_event_flags(rows):
     """) == [(1, 3, 0, 0)]
 
 
-def synthetic_silver(share: float) -> tuple:
+def synthetic_silver(share: float, overrides: dict | None = None) -> tuple:
     """Hand-built Silver rows with known answers (2024-01-01 UTC), as in scripts/test_gold_events_duckdb.py.
 
     A 01001 (10,000): 200 at 00:00, 00:15, feed gap 00:30-01:45, 200 at 02:00, 02:15 -> one event over the gap.
@@ -124,6 +131,9 @@ def synthetic_silver(share: float) -> tuple:
     D 01007 (1,000,000): threshold T; T-1 at 03:00, 03:30 and T at 03:15, 03:45 -> one event 03:15-04:00.
     E 01009 (10,000): 5,000, 5,000, five readings of 50, 4,000 -> a 5-run dropout inside one event.
     F 01011 (10,000): 5,000, six readings of 50, 5,000 -> recovery after 6 runs: two events.
+    G 01013 (10,000): 5,000 at 06:00, eight empty readings, 5,000 at 08:15 -> bridged, one event (D64).
+    H 01015 (10,000): 5,000 at 06:00, eight empty readings, 50 at 08:15, 5,000 at 08:30 -> the reading
+      after the empty run does not qualify: not bridged, two events, neither flagged (D64).
     """
     t = int(math.ceil(max(pipeline_config.get("events.min_customers_out"), share * 1_000_000)))
     con = duckdb_pipeline.connect()
@@ -131,7 +141,8 @@ def synthetic_silver(share: float) -> tuple:
         CREATE TABLE dim_county_customers AS SELECT * FROM (VALUES
             ('01001', 10000::BIGINT, 'total_customers_2024'), ('01003', 120::BIGINT, 'total_customers_2024'),
             ('01005', 5000::BIGINT, 'total_customers_2024'), ('01007', 1000000::BIGINT, 'total_customers_2024'),
-            ('01009', 10000::BIGINT, 'total_customers_2024'), ('01011', 10000::BIGINT, 'total_customers_2024')
+            ('01009', 10000::BIGINT, 'total_customers_2024'), ('01011', 10000::BIGINT, 'total_customers_2024'),
+            ('01013', 10000::BIGINT, 'total_customers_2024'), ('01015', 10000::BIGINT, 'total_customers_2024')
         ) AS t(fips_code, customers, denominator_source)
     """)
     con.execute(f"""
@@ -151,13 +162,23 @@ def synthetic_silver(share: float) -> tuple:
                       FROM hm WHERE hhmm BETWEEN '08:00' AND '09:45'
             UNION ALL SELECT '01011', reading_time, CASE WHEN hhmm IN ('10:00', '11:45') THEN 5000 ELSE 50 END
                       FROM hm WHERE hhmm BETWEEN '10:00' AND '11:45'
+            UNION ALL SELECT '01013', reading_time, 5000 FROM hm WHERE hhmm IN ('06:00', '08:15')
+            UNION ALL SELECT '01015', reading_time, CASE WHEN hhmm = '08:15' THEN 50 ELSE 5000 END
+                      FROM hm WHERE hhmm IN ('06:00', '08:15', '08:30')
         )
         SELECT r.fips_code, 'Test' AS county, 'Alabama' AS state, 'AL' AS state_abbr, 'South' AS census_region,
                r.reading_time, r.customers_out, r.customers_out > k.customers AS exceeds_customers,
                YEAR(r.reading_time) AS year
         FROM r JOIN dim_county_customers k USING (fips_code)
     """)
-    duckdb_pipeline.run_file(con, "03_gold_events.sql", FIXTURES)
+    con.execute("""
+        CREATE TABLE silver_empty_readings AS
+        SELECT f.fips_code, s.reading_time, 2024 AS year, 'synthetic' AS source_file
+        FROM (VALUES ('01013'), ('01015')) AS f(fips_code)
+        CROSS JOIN (SELECT UNNEST(generate_series(TIMESTAMP '2024-01-01 06:15', TIMESTAMP '2024-01-01 08:00',
+                                                  INTERVAL 15 MINUTES)) AS reading_time) AS s
+    """)
+    duckdb_pipeline.run_file(con, "03_gold_events.sql", FIXTURES, overrides)
     return con, t
 
 
@@ -176,8 +197,63 @@ def test_event_rules_at_their_boundaries():
         ("01009-00001", "08:00", "10:00", 2.0, 3, 3500.0, 3500.0, False, 0.0, True, 1.25),
         ("01011-00001", "10:00", "10:15", 0.25, 1, 1250.0, 1250.0, False, 0.0, False, 0.0),
         ("01011-00002", "11:45", "12:00", 0.25, 1, 1250.0, 1250.0, False, 0.0, False, 0.0),
+        ("01013-00001", "06:00", "08:30", 2.5, 2, 2500.0, 2500.0, False, 0.0, False, 0.0),
+        ("01015-00001", "06:00", "06:15", 0.25, 1, 1250.0, 1250.0, False, 0.0, False, 0.0),
+        ("01015-00002", "08:30", "08:45", 0.25, 1, 1250.0, 1250.0, False, 0.0, False, 0.0),
     ]
+    assert con.execute("""
+        SELECT event_id, CAST(bridged_empty_hours AS DOUBLE), spans_empty_gap FROM gold_outage_events
+        WHERE bridged_empty_hours > 0 OR spans_empty_gap
+    """).fetchall() == [("01013-00001", 2.0, False)]
     assert con.execute("""
         SELECT fips_code, strftime(dropout_start, '%H:%M'), strftime(dropout_end, '%H:%M'), dropout_runs FROM gold_feed_dropouts
     """).fetchall() == [("01009", "08:30", "09:45", 5)]
     assert con.execute("SELECT COUNT(*) FROM gold_collection_runs WHERE NOT is_collected").fetchone()[0] == 6
+
+
+def test_empty_run_longer_than_the_bridge_ends_the_event():
+    """D64: with the bridge limit one run shorter than G's eight empty runs, G is two events, and
+    both are flagged as touching an empty run too long to bridge. H is unchanged."""
+    con, _ = synthetic_silver(pipeline_config.get("events.threshold_share"), {"events.max_empty_bridge_runs": 7})
+    assert con.execute("""
+        SELECT event_id, strftime(event_start, '%H:%M'), strftime(event_end, '%H:%M'),
+               CAST(bridged_empty_hours AS DOUBLE), spans_empty_gap
+        FROM gold_outage_events WHERE fips_code IN ('01013', '01015') ORDER BY event_id
+    """).fetchall() == [
+        ("01013-00001", "06:00", "06:15", 0.0, True),
+        ("01013-00002", "08:15", "08:30", 0.0, True),
+        ("01015-00001", "06:00", "06:15", 0.0, False),
+        ("01015-00002", "08:30", "08:45", 0.0, False),
+    ]
+
+
+PONCE = """
+    SELECT event_id, strftime(event_start, '%Y-%m-%d %H:%M'), strftime(event_end, '%Y-%m-%d %H:%M'), reading_count,
+           CAST(ROUND(customer_hours_lost_raw) AS BIGINT), CAST(bridged_empty_hours AS DOUBLE), spans_empty_gap
+    FROM gold_outage_events WHERE fips_code = '72113' ORDER BY event_id"""
+
+
+def test_puerto_rico_blackout_is_one_event(rows):
+    """D64, fixture window W7: in the Ponce region every reading from 2025-04-17 00:00 to 14:45 is
+    empty (60 runs) while about 190,000 customers were out on both sides. The run is bridged: one
+    event, 15 hours bridged, no customer-hours added. The event ends next to the 71-hour empty run
+    from 2025-04-18 16:45, too long to bridge, so it and the next event are flagged."""
+    assert rows(PONCE) == [
+        ("72113-00001", "2025-04-16 15:00", "2025-04-18 16:45", 139, 4060559, 15.0, True),
+        ("72113-00002", "2025-04-21 15:30", "2025-04-21 18:00", 10, 5644, 0.0, True),
+    ]
+    assert rows("""SELECT COUNT(*) FROM silver_empty_readings WHERE fips_code = '72113'
+                   AND reading_time BETWEEN TIMESTAMP '2025-04-17 00:00' AND TIMESTAMP '2025-04-17 14:45'""") == [(60,)]
+
+
+def test_without_the_bridge_the_blackout_splits():
+    """Before D64 (no bridging) the same readings give two events; their readings (36 + 103 = 139)
+    and raw customer-hours add up to the bridged event."""
+    con = duckdb_pipeline.connect()
+    duckdb_pipeline.run_all(con, FIXTURES, overrides={"events.max_empty_bridge_runs": 0})
+    got = con.execute(PONCE).fetchall()
+    con.close()
+    assert [g[:5] for g in got[:2]] == [
+        ("72113-00001", "2025-04-16 15:00", "2025-04-17 00:00", 36, 987343),
+        ("72113-00002", "2025-04-17 15:00", "2025-04-18 16:45", 103, 3073215),
+    ]

@@ -48,6 +48,7 @@ DIM = [
     ("49057", 106115, "total_customers_2024", False, 1.0, False, False),
     ("51720", None, None, False, 1.0, False, False),
     ("54061", 55481, "total_customers_2024", False, 1.0, False, False),
+    ("72113", 65292, "mcc", False, 1.0, False, False),
 ]
 
 
@@ -95,11 +96,11 @@ def test_silver_rows_per_year_and_overcounts(rows):
     """D4: readings above the county's customers are flagged, never changed (Harris in Beryl, Rich UT)."""
     assert rows("""
         SELECT year, COUNT(*), COUNT_IF(exceeds_customers) FROM silver_outages GROUP BY year ORDER BY year
-    """) == [(2022, 624, 0), (2023, 195, 0), (2024, 4044, 84), (2025, 192, 0)]
+    """) == [(2022, 624, 0), (2023, 195, 0), (2024, 4044, 84), (2025, 857, 96)]
     assert rows("""
         SELECT fips_code, COUNT(*), MAX(customers_out) FROM silver_outages WHERE exceeds_customers
         GROUP BY fips_code ORDER BY fips_code
-    """) == [("48201", 81, 1660703), ("49033", 3, 3935)]
+    """) == [("48201", 81, 1660703), ("49033", 3, 3935), ("72113", 96, 194353)]
 
 
 def test_fips_padding_and_region_from_state_fips(rows):
