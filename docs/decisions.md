@@ -67,7 +67,9 @@ incrementally in D56). See `docs/data_profile.md`.
 | D58 | 2025 does not change denominators; base years 2022-2024 | Silver | 2026-11-22 |
 | D59 | 2025 sources: EAGLE-I, NOAA, NWS, EIA-861 loaded; OE-417 2024-2025 missing | All | 2026-11-22 |
 | D60 | State-years with over 10% of customer-hours without a denominator are not ranked (CT 2025) | Gold | 2026-11-22 |
-| D61 | County reliability rows start at the county's first reported year | Gold | 2026-11-22 |
+| D61 | County reliability rows start at the county's first reported year (restatement of 2022-2023 ranks) | Gold | 2026-11-22 |
+| D62 | Empty 2025 readings: still dropped; they split the Puerto Rico blackout (open, Q10) | Silver / Gold | 2026-11-22 |
+| D63 | 2025 is a complete year; no partial-year flag | Gold | 2026-11-22 |
 
 ---
 
@@ -2272,6 +2274,66 @@ customers (rank 18 to 17), 2023 8,820 to 9,169 (11 to 10); Washington 2022 rank 
 2022 and Washington 2023 by under 1%. Arkansas and Kentucky 2022 and Hawaii 2023 move down one rank
 as a result. No rank 1 changes.
 
+**Status: accepted as a restatement (2026-11-22).** I reviewed the change and kept it. The
+2022-2023 state and county ranks published before this commit are superseded; the before and
+after values that changed are listed in `CHANGELOG.md`.
+
+## D62. Empty 2025 readings: what they are and whether dropping them hides outages
+
+**What:** 1,972,650 rows of EAGLE-I 2025 (6.5%) have an empty `customers_out`. D15 drops them,
+so under D3 each one counts as a missing reading (zero customers out). I profiled them before
+deciding anything; **the rule is unchanged until I decide Q10.**
+
+**Findings (DuckDB, full data):**
+- **Spread:** every day of 2025, 3,027 counties, 34,078 of the 35,028 collection runs; a median
+  of 35 counties per run. Rising late in the year: 49,288 in February, 493,113 in October
+  (mid-October peak, 33,301 on 2025-10-15). Only one run is nationwide-scale (2025-08-01 19:15,
+  2,138 counties). The top 30 counties hold 9% of them.
+- **Where:** Illinois (361,851, 34% of its rows), Virginia (214,617, 11%), South Carolina (207,890,
+  30%; Allendale and neighbouring counties are empty most of the time from February), Nebraska (39%).
+- **Mostly quiet periods:** the nearest readings around an empty one have a median of 2 customers
+  out. Only 2,665 empty readings (0.14%) fall inside an event, while events cover 2.1% of
+  county-slots, so they are much rarer during outages than by chance. Only 7,111 (0.36%) sit
+  between two readings at or above the county's event threshold (D18).
+- **Short gaps inside outages:** 1,370 runs of up to 1 hour between above-threshold readings. They
+  do not split events (D3 needs more than 1 hour) but count as zero: about 1.1 M customer-hours
+  (0.16% of 2025's 695.6 M), estimated as the lower of the two neighbouring readings.
+- **Long gaps inside outages:** 164 runs longer than 1 hour between above-threshold readings. These
+  end the event and start a new one. Most of the missing hours are from one case: **the Puerto
+  Rico island-wide blackout of 2025-04-16.** In Ponce, Mayaguez, Arecibo, San Juan, Bayamon and
+  Caguas every reading from 2025-04-17 00:00 to 14:45 UTC (60 runs) is empty while 85,000 to
+  273,000 customers per county were out on both sides. Each county's blackout is split into two
+  events and about 10.8 M customer-hours are not counted. Rejoined, Ponce would be about 7.0 M
+  customer-hours (now 3.07 M for the second half, 2025 rank 9) and the third-largest 2025 event.
+  All other long gaps add up to about 1.8 M.
+- **Top events:** the 20 largest 2025 events contain 61 empty readings in 15,981 slots (0.4%); Los
+  Angeles 06037-00190 has 6 of 1,093.
+
+**Why it matters:** an empty value is not a missing row. The county was collected but no count was
+given, so treating it as zero (D3) is wrong in the rare case where the county was in an outage.
+Puerto Rico is not ranked (D43), so no state or county rank changes; the event list and 2025
+customer-hours do.
+
+**Recommendation (Q10):** keep dropping empty readings from Silver, but in Gold treat a run of
+empty readings like a D19 dropout for that county: it cannot end or split an event, and the event
+gets `spans_feed_gap`-style hours instead of invented customers out. That fixes the Puerto Rico
+split without inventing values for the 99.6% of empty readings in quiet periods. Filling them by
+interpolation is not recommended: the neighbouring readings are often a day apart (median 27 hours).
+
+**Rows affected:** none yet (finding only).
+
+## D63. 2025 is a complete year; no partial-year flag
+
+**What:** Silver 2025 runs from 2025-01-01 00:00 to 2025-12-31 23:45 UTC, 35,028 distinct
+collection runs (2022-2024: 35,024 to 35,095 of 35,040 or 35,136). The 2025 EAGLE-I file is a
+full year, so I did not add a `partial_year` flag to the yearly outputs.
+
+**Why:** a flag that is always false adds a column to every yearly table without information.
+If a later year is loaded before December, I will add the flag then, with that year's first and
+last reading.
+
+**Rows affected:** none.
+
 ---
 
 ## Open questions
@@ -2291,3 +2353,6 @@ Q1 is resolved in D9; Q2 (fixed 100-customer threshold) is resolved in D18 and D
 **Q8.** Resolved in D43.
 
 **Q9.** Resolved in D52.
+
+**Q10.** Empty 2025 readings (D62): keep counting them as zeros (current rule), or treat runs of
+them as county feed gaps that cannot end or split an event (recommended)?
