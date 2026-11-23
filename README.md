@@ -35,6 +35,9 @@ read it, so I change values there and nowhere else.
 | `make job-run` | Runs the deployed job once and prints each task's result and duration. Deploying, repairs and failed gates are in `docs/runbook.md`. |
 | `make quality` | Runs every check in `sql/databricks/90_quality_checks.sql` and appends the results to `gold_quality_results`. `make quality ENGINE=duckdb` builds the pipeline locally and runs the same checks. |
 | `make export` | Writes the Gold tables to `data/gold_exports/` as CSV for Power BI, split by year when a file would exceed 50 MB. The CSVs are gitignored (D50). |
+| `make dbt-test-local` | Builds the pipeline on the fixture into a DuckDB file, runs `dbt build` on it (10 marts, 72 tests) and checks the marts against Gold. |
+| `make dbt-build` | `dbt build` on Databricks: the star schema marts in `workspace.outages`, then the same check against Gold (D66). |
+| `make dbt-docs` | dbt docs for the fixture build, with the lineage graph (`docs/images/dbt_lineage.png`). |
 | `make all` | `setup`, `download`, `test`, `pipeline`, `quality`, `export` in order. |
 | `make clean` | Removes `logs/` and Python caches; raw data is kept. |
 
@@ -47,6 +50,17 @@ Each run logs its steps (start time, duration, row counts) to `logs/` and prints
 ### Silver
 
 ### Gold
+
+## dbt Star Schema
+
+`dbt/` turns the Gold tables into a star schema for Power BI and the later Snowflake copy (D66):
+five facts (`fct_outage_events`, `fct_state_reliability`, `fct_county_reliability`,
+`fct_territory_reliability`, `fct_utility_reliability`) and five dimensions (`dim_county`,
+`dim_state`, `dim_date`, `dim_storm_type`, `dim_utility`). The marts reshape Gold without
+recomputing anything, and `scripts/reconcile_marts.py` checks that they match Gold exactly. An
+event counts in the year it starts. dbt has its own uv environment in `dbt/`; see `dbt/README.md`.
+
+![dbt lineage](docs/images/dbt_lineage.png)
 
 ## Snowflake Star Schema
 

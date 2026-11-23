@@ -71,6 +71,8 @@ incrementally in D56). See `docs/data_profile.md`.
 | D62 | Empty 2025 readings: still dropped; they split the Puerto Rico blackout (Q10, resolved in D64) | Silver / Gold | 2026-11-22 |
 | D63 | 2025 is a complete year; no partial-year flag | Gold | 2026-11-22 |
 | D64 | Runs of empty readings up to 24 hours inside an outage are bridged like dropouts (resolves Q10) | Silver / Gold | 2026-11-22 |
+| D65 | Python 3.13, the newest version every dbt adapter supports | All | 2026-11-22 |
+| D66 | dbt star schema over Gold in its own environment; marts must equal Gold exactly | Marts | 2026-11-22 |
 
 ---
 
@@ -2400,6 +2402,72 @@ in Puerto Rico is 71 hours, so it still ends the event and is flagged.
   a full 2022-2025 rebuild in all 28 Silver, dimension and Gold tables (DuckDB).
 - Fixture: window W7 (Ponce and Harris, 2025-04-16 12:00 to 04-21 18:00) holds both runs: the
   15-hour one is bridged and the 71-hour one ends the event and is flagged.
+
+## D65. Python 3.13, the newest version every dbt adapter supports
+
+**What:** The project moves from Python 3.14 to 3.13: `.python-version` is `3.13` (`uv python pin
+3.13`), `requires-python = ">=3.13"` and ruff's `target-version = "py313"` in `pyproject.toml`. CI
+installs the version in `.python-version`, so it follows. `dbt/` has its own `.python-version`, 3.13.
+
+**Why:** The dbt adapters I need do not all support 3.14. dbt-core 1.12.7, dbt-duckdb 1.11.1 and
+dbt-adapters 1.24.6 list 3.14, but dbt-databricks 1.13.1 and dbt-snowflake 1.12.5 stop at 3.13, and
+on 3.14 the Databricks adapter's dependencies warn that Pydantic V1 is not compatible with 3.14.
+3.13 is the newest version all four support. Nothing in the pipeline needed 3.14.
+
+**Rows affected:** none. After the switch the fast suite (106 tests), lint, all 119 quality checks
+on the full data in DuckDB and the slow suite pass unchanged.
+
+## D66. dbt star schema over Gold; the marts must equal Gold exactly
+
+**What:**
+- `dbt/` is a dbt project with its own uv environment (`dbt/pyproject.toml`, `dbt/uv.lock`):
+  dbt-core, dbt-databricks, dbt-duckdb and dbt-snowflake. dbt-databricks 1.13.1 requires
+  `databricks-sdk < 0.158`, while the pipeline uses 0.169 for the job and upload code, so the two
+  cannot share one environment. `dbt/run_dbt.py` loads `../.env`, so no credential is printed or
+  stored. Only `profiles.yml.example` is committed.
+- **Sources:** the Silver and Gold tables of `workspace.outages`, plus two Bronze reference lookups
+  (state FIPS regions, D16, and storm severity, D41). Freshness is checked on `silver_outages`
+  (newest reading; warn after 400 days, because EAGLE-I is released yearly) and on
+  `gold_quality_results` (newest run; warn after 8 days).
+- **Marts**, tables in the same schema next to Gold, and nothing else is created:
+  `fct_outage_events`, `fct_county_reliability`, `fct_state_reliability`,
+  `fct_territory_reliability`, `fct_utility_reliability`, `dim_county`, `dim_state`, `dim_date`,
+  `dim_storm_type` and `dim_utility`. They reshape Gold but never recompute a metric, so each
+  rule stays in one place (`sql/databricks/`). The SQL uses dbt's cross-database macros (date
+  spine, concat, type casts, `bool_or`) so the same models run on Databricks, DuckDB and Snowflake.
+- **Event-year convention:** an event counts in the year it starts (UTC), and `event_date` joins
+  `dim_date`. This is stated in the model docs.
+- **Utilities:** IEEE 1366 and other-standard reporters share `fct_utility_reliability`, kept apart
+  by `reporting_group`; only IEEE rows have ranks (D23, D39).
+- **Tests (72):** unique and not_null on every key, relationships from every fact to its
+  dimensions, accepted values for the categories, and four custom tests:
+  - only the 50 states and DC are ranked;
+  - every unranked row has a footnote reason, and no ranked row has one;
+  - no calibrated county is below its base-year peak unless D36 skipped it;
+  - the event fact equals Gold per year.
+- `scripts/reconcile_marts.py` compares the marts with Gold: row counts, events and customer-hours
+  per year, the top 10, and the rank 1 state and county per year. `make dbt-build` (Databricks) and
+  `make dbt-test-local` (fixture in DuckDB) both end with it. CI runs dbt parse, dbt build and the
+  reconciliation on the fixture with no secrets.
+
+**Why:** The Power BI dashboard and the later Snowflake copy need a documented star schema with
+tested keys. Building it on Gold, not beside it, keeps one definition of every number.
+
+**Rows affected (Databricks, equal to DuckDB):** `fct_outage_events` 602,355; `fct_county_reliability`
+12,217; `fct_state_reliability` 204; `fct_territory_reliability` 8; `fct_utility_reliability` 3,884
+(2,963 IEEE 1366, 921 other standard); `dim_county` 3,079; `dim_state` 53; `dim_date` 1,461;
+`dim_storm_type` 55 (54 NOAA types and 'unmatched'); `dim_utility` 937. Every reconciliation
+matches Gold exactly:
+- events per year: 149,695 / 144,747 / 151,819 / 156,094;
+- customer-hours per year: 1,071.9 M / 878.5 M / 1,691.4 M / 693.7 M;
+- the top 10 events, led by Harris 48201-00250;
+- rank 1 state per year: ME, ME, SC, WV.
+
+Two documented exceptions:
+- `dim_county.county` is NULL for Klickitat WA (53039), which is in the MCC file but has no
+  reading yet.
+- 9 utility rows for American Samoa, Guam and the Northern Mariana Islands have no `dim_state`
+  row. EAGLE-I does not cover those territories, so their relationship test excludes them.
 
 ---
 

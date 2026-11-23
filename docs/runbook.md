@@ -104,6 +104,19 @@ uv run python scripts/run_databricks.py --steps verify
 which compares every table's row count, the detail checks and the top 10 events with the
 expected values.
 
+## dbt marts (D66)
+
+After a successful job run:
+
+```
+make dbt-build
+```
+
+runs `dbt build --target databricks` (the ten marts and their 72 tests, in `workspace.outages`) and
+then `scripts/reconcile_marts.py`, which must report "All marts match Gold". dbt runs in its own
+environment (`cd dbt && uv sync` once). `uv run python run_dbt.py source freshness --target
+databricks` checks the sources' freshness.
+
 ## Re-run a failed task
 
 A failed task skips every task after it. Once the cause is fixed (and redeployed, if the fix
