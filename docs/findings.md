@@ -119,10 +119,8 @@ Counties, top 3 per year:
   - In 2024 it is footnoted by D45, because most of its customer-hours came from capped readings.
 - **Possible misattributions:** 39 counties outside the
   calibrated states have a 2022-2024 peak above 1.25x their customers. Their readings are flagged
-  and capped (D4), not floored. When D36 was written the list had 30 counties. The 2025 load and
-  the D61 restatement do not explain the difference. The peak is the 2022-2024 peak only, and the
-  counties reported from 2022 number 39.
-  I record the gap in D36 and have not traced it further. The largest ratios:
+  and capped (D4), not floored. An earlier count in D36 used different criteria and is superseded
+  by this list. The largest ratios:
 
 | County | State | Customers | Peak out | Peak / customers |
 |---|---|---:|---:|---:|

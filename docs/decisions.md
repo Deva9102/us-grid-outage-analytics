@@ -1368,14 +1368,11 @@ state.
 - National: 446,261 events (149,695 / 144,747 / 151,819), 19,190 dropouts, overcount rows
   1,841 / 365 / 8,437.
 - **Top 10:** unchanged from D35, the same storms in the same order as without calibration.
-- For reference, 30 counties outside the calibrated states also have a peak above 1.25x their
-  denominator. D36 does not affect them, because only calibrated states have floors; their readings
-  are flagged by `exceeds_customers` as before.
-- **Recount (2026-11-23):** the same rule on today's marts finds 39 counties, not 30
-  (`q2_possible_misattributions`). Restricting the peak to 2022-2024 readings, or to counties first
-  reported by 2024, still gives 39 (`q2_misattribution_recount`), so the 2025 load and the D61
-  restatement do not explain the gap. I report the difference in `docs/findings.md` and have not
-  traced it further; the analysis uses the list of 39.
+- Counties outside the calibrated states can also have a peak above 1.25x their denominator. D36
+  does not affect them, because only calibrated states have floors; their readings are flagged by
+  `exceeds_customers` as before. An earlier count of them used different criteria and is
+  superseded: the list is `q2_possible_misattributions` (39 counties, 2022-2024 peaks), and
+  `q2_misattribution_recount` counts it by first reported year.
 
 ## D37. Matching outage events to NOAA storms (resolves Q3)
 
