@@ -8,6 +8,17 @@
 
 ## Data Sources
 
+### Exported data
+
+I publish the dbt marts for Power BI (D70). The small tables are committed as CSV in
+[`data/gold_exports/summary/`](data/gold_exports/summary/). The outage events table is too large
+for git and is attached to a GitHub Release:
+- Release: [data-2026-11-23](https://github.com/Deva9102/us-grid-outage-analytics/releases/tag/data-2026-11-23)
+- Download: [fct_outage_events.parquet](https://github.com/Deva9102/us-grid-outage-analytics/releases/download/data-2026-11-23/fct_outage_events.parquet)
+- Manifest: [`data/gold_exports/summary/manifest.json`](data/gold_exports/summary/manifest.json) lists
+  every file's rows, column types and SHA-256. Check a download with
+  `shasum -a 256 fct_outage_events.parquet`.
+
 ## Architecture
 
 ## Repository Structure

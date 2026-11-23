@@ -150,10 +150,8 @@ Empty fields are NULL. Pass the "en-US" culture so decimals read with a point on
 The large table is not in git. It is a GitHub Release asset (D70) and is also written locally to
 `data/gold_exports/release/` by `make export`.
 
-1. Get Data > Parquet. Paste the local path, or once the release is published, the asset URL
-   `https://github.com/Deva9102/us-grid-outage-analytics/releases/download/<tag>/fct_outage_events.parquet`.
-   Draft assets cannot be downloaded anonymously, so use the local file until the release is
-   published.
+1. Get Data > Parquet. Paste the local path or the release asset URL
+   `https://github.com/Deva9102/us-grid-outage-analytics/releases/download/data-2026-11-23/fct_outage_events.parquet`.
 2. The same in M:
 
 ```powerquery
