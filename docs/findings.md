@@ -119,8 +119,10 @@ Counties, top 3 per year:
   - In 2024 it is footnoted by D45, because most of its customer-hours came from capped readings.
 - **Possible misattributions:** 39 counties outside the
   calibrated states have a 2022-2024 peak above 1.25x their customers. Their readings are flagged
-  and capped (D4), not floored. When D36 was written the list had 30 counties; the same rule on
-  today's marts finds the count above. The largest ratios:
+  and capped (D4), not floored. When D36 was written the list had 30 counties. The 2025 load and
+  the D61 restatement do not explain the difference. The peak is the 2022-2024 peak only, and the
+  counties reported from 2022 number 39.
+  I record the gap in D36 and have not traced it further. The largest ratios:
 
 | County | State | Customers | Peak out | Peak / customers |
 |---|---|---:|---:|---:|
@@ -132,6 +134,14 @@ Counties, top 3 per year:
 | McMullen | TX | 222 | 760 | 3.42 |
 | Hamilton | NY | 2,566 | 7,289 | 2.84 |
 | Madison | NC | 5,801 | 15,310 | 2.64 |
+
+- **Hamilton County NY is a lead to check, not a finding.** It is the Northeast's worst county in
+  2024 and is on this list, with a peak
+  2.84x its
+  2,566 customers. It lies in the
+  Adirondacks, where many homes are seasonal, so the EAGLE-I customer count may be an undercount.
+  That would inflate its per-1,000 rate and explain a peak above its customer count. It is in
+  National Grid's Niagara Mohawk territory.
 
 - **Connecticut 2025 is footnoted, not ranked:** from 2025-05-29 EAGLE-I reports it by planning
   region, and those regions have no customer denominator (D60). 2025 therefore ranks

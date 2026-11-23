@@ -81,6 +81,18 @@ WHERE NOT c.is_calibrated
   AND c.base_peak_customers_out > 1.25 * c.customers
 ORDER BY peak_to_customers DESC, c.fips_code;
 
+-- result: q2_misattribution_recount
+-- The same list counted by the year EAGLE-I first reports the county: the peak is already the
+-- 2022-2024 base-year peak, so a county first reported in 2025 cannot be on it.
+SELECT
+    c.first_reported_year,
+    COUNT(*) AS counties
+FROM dim_county AS c
+WHERE NOT c.is_calibrated
+  AND c.base_peak_customers_out > 1.25 * c.customers
+GROUP BY c.first_reported_year
+ORDER BY c.first_reported_year;
+
 -- result: q2_footnote_counts
 -- Unranked state and county rows per year and reason.
 SELECT 'state' AS level, year, footnote_reason, COUNT(*) AS rows_footnoted

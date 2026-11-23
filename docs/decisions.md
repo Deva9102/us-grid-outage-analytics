@@ -1370,6 +1370,11 @@ state.
 - For reference, 30 counties outside the calibrated states also have a peak above 1.25x their
   denominator. D36 does not affect them, because only calibrated states have floors; their readings
   are flagged by `exceeds_customers` as before.
+- **Recount (2026-11-23):** the same rule on today's marts finds 39 counties, not 30
+  (`q2_possible_misattributions`). Restricting the peak to 2022-2024 readings, or to counties first
+  reported by 2024, still gives 39 (`q2_misattribution_recount`), so the 2025 load and the D61
+  restatement do not explain the gap. I report the difference in `docs/findings.md` and have not
+  traced it further; the analysis uses the list of 39.
 
 ## D37. Matching outage events to NOAA storms (resolves Q3)
 

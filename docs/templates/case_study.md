@@ -46,8 +46,10 @@ that caused it, and benchmarks utilities with EIA-861 SAIDI and SAIFI.
    Hamilton County NY is small ({{ q2_northeast_counties[year=2024,region_rank=1].customers | int }}
    customers), and its peak reading is
    {{ q2_possible_misattributions[fips_code=36041].peak_to_customers | f2 }}x its customer count. It
-   is on the possible-misattribution list, so treat its rate as a screening signal to check against
-   your own outage records.
+   is on the possible-misattribution list, so it is a lead to check, not a conclusion. It lies in the
+   Adirondacks, where many homes are seasonal, so its EAGLE-I customer count may be an undercount
+   that inflates its per-1,000 rate and explains the high peak. It is in National Grid's Niagara
+   Mohawk territory, so Niagara Mohawk's own customer and outage records can settle it.
 4. **Eversource benchmarks well; Niagara Mohawk does not.** Among the
    {{ q5_band_summary[data_year=2025,size_band=very_large].ranked_utilities }} very large IEEE 1366
    utilities in 2025:
