@@ -1,6 +1,6 @@
 # Test fixture
 
-A small sample of real rows from every source the pipeline reads (about 390 KB). The fast pytest
+A small sample of real rows from every source the pipeline reads (about 420 KB). The fast pytest
 suite runs the real SQL in `sql/databricks/` against it in DuckDB (`scripts/duckdb_pipeline.py`)
 and checks exact expected results. Every row is copied unchanged from the raw downloads by
 `scripts/build_test_fixture.py` (`make fixture`); nothing is edited or invented. Rules that real
@@ -11,10 +11,10 @@ synthetic rows inside the tests, never in these files. Design and selection: `do
 
 | Folder | Source | Rows | Why these rows |
 |---|---|---|---|
-| `eaglei/<year>/` | EAGLE-I county outages | 624 / 195 / 3,965 | 13 counties in 5 windows (below), plus one reading each for Kalawao HI and Norton city VA |
-| `eaglei/metadata/MCC.csv` | EAGLE-I modeled customer counts | 14 | the fixture counties and the Grand Total row (D5) |
+| `eaglei/<year>/` | EAGLE-I county outages | 624 / 195 / 4,044 / 192 | 13 counties in 5 windows (below), Monongalia WV and Harris in a sixth, plus one reading each for Kalawao HI and Norton city VA |
+| `eaglei/metadata/MCC.csv` | EAGLE-I modeled customer counts | 15 | the fixture counties and the Grand Total row (D5) |
 | `noaa_storm_events/<year>/` | NOAA Storm Events details | 52 events | storms whose match window overlaps a fixture window in a fixture county, plus one water-area event |
-| `nws_zone_county/<year>/` | NWS zone-county correlation files | 261 | the zones of those storms, in all six file versions |
+| `nws_zone_county/<year>/` | NWS zone-county correlation files | 305 | the zones of those storms, in all seven file versions |
 | `eia861/<year>/` | EIA-861 Sales, Reliability, Service Territory (raw rows) | 6 to 483 per file | Sales for HI, UT, MA, TX, CA and VA 2024; Reliability for HI, UT and MA 2024 and the utilities behind the D39 and National Grid checks |
 | `oe417/<year>/` | DOE OE-417 annual summaries (raw rows) | 8 | header rows and four incidents: matched, not matched, no county, no time |
 | `expected_rows.yml` | | | row count of every table built from the fixture |
@@ -22,7 +22,7 @@ synthetic rows inside the tests, never in these files. Design and selection: `do
 Reference lookups (`state_regions.csv` and the others) are read from `data/reference/`.
 
 Counties: Harris and Fort Bend TX, Los Angeles CA, all five Hawaii counties, and Salt Lake, Utah,
-Davis, Weber and Rich UT.
+Davis, Weber and Rich UT; Monongalia WV in the last window only.
 
 | Window (UTC) | What it covers |
 |---|---|
@@ -31,6 +31,7 @@ Davis, Weber and Rich UT.
 | 2024-05-23 18:00 to 05-24 12:00 | the 9-hour nationwide feed gap, 00:15 to 09:00 (D3, D10) |
 | 2024-06-15 20:00 to 06-16 03:00 | Rich UT readings above its customer count (D4, D45 footnote) |
 | 2024-07-08 00:00 to 07-12 00:00 | Hurricane Beryl: the Harris and Fort Bend feed dropouts (D19), Harris overcount (D4), Kauai's peak that sets its D35 floor |
+| 2024-12-31 12:00 to 2025-01-02 00:00 | Monongalia WV and Harris only: an outage from 2024-12-31 19:30 into 2025 that must stay one event when 2025 is loaded incrementally (D56, D57; `tests/test_incremental.py`) |
 
 Harris reports in every collected 15-minute slot of every window, so the only empty slots inside a
 window are real nationwide feed gaps. All Hawaii counties are present, so Hawaii's D21 calibration
@@ -48,7 +49,7 @@ uploads are stored here as plain CSV (every column as text, as in Bronze).
 - **EAGLE-I county outages and MCC** — Oak Ridge National Laboratory, Environment for Analysis of
   Geo-Located Energy Information (EAGLE-I), U.S. Department of Energy. Brelsford, C., Tennille, S.,
   Myers, A., et al., "A dataset of recorded electricity outages by United States county 2014–2022",
-  with the 2023 and 2024 releases, figshare, https://doi.org/10.6084/m9.figshare.24237376.v4.
+  with the 2023, 2024 and 2025 releases, figshare, https://doi.org/10.6084/m9.figshare.24237376.v4.
   Licensed under Creative Commons Attribution 4.0 (CC BY 4.0,
   https://creativecommons.org/licenses/by/4.0/). The rows here are an unmodified subset.
 - **NOAA Storm Events Database** — NOAA National Centers for Environmental Information,

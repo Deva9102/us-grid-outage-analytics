@@ -1,4 +1,4 @@
-"""Download the NWS public forecast zone to county correlation files in effect during 2022-2024.
+"""Download the NWS public forecast zone to county correlation files in effect during 2022-2025.
 
 Many NOAA Storm Events are reported by forecast zone (CZ_TYPE = 'Z'), not county. This file maps
 each zone to the counties it covers. NWS redraws zones from time to time and publishes a new file
@@ -6,7 +6,7 @@ named bp<ddmmmyy>.dbx, effective from that date, at
     https://www.weather.gov/source/gis/Shapefiles/County/
 (listed on https://www.weather.gov/gis/ZoneCounty, which shows only the latest versions).
 
-Every version in effect at some point in 2022-2024 is downloaded, starting with the one in force on
+Every version in effect at some point in 2022-2025 is downloaded, starting with the one in force on
 2022-01-01. Each is saved under the year it took effect:
     data/raw/nws_zone_county/<effective year>/bp<ddmmmyy>.dbx
 
@@ -30,12 +30,12 @@ from download_utils import RAW, FetchFailed, ManualFile, Report, fetch, remote_s
 
 BASE = "https://www.weather.gov/source/gis/Shapefiles/County/"
 PAGE = "https://www.weather.gov/gis/ZoneCounty"
-ARCHIVE = "https://web.archive.org/web/2024*/https://www.weather.gov/source/gis/Shapefiles/County/"
+ARCHIVE = "https://web.archive.org/web/2025*/https://www.weather.gov/source/gis/Shapefiles/County/"
 SOURCE_DIR = RAW / "nws_zone_county"
 
-# Versions in effect during 2022-2024, by effective date. bp08se21 was in force on 2022-01-01;
-# bp05mr24 stayed in force until bp18mr25 replaced it.
-VERSIONS = ["bp08se21", "bp22mr22", "bp13se22", "bp08mr23", "bp19se23", "bp05mr24"]
+# Versions in effect during 2022-2025, by effective date. bp08se21 was in force on 2022-01-01;
+# bp05mr24 stayed in force until bp18mr25 replaced it, and bp18mr25 until bp16ap26 (D59).
+VERSIONS = ["bp08se21", "bp22mr22", "bp13se22", "bp08mr23", "bp19se23", "bp05mr24", "bp18mr25"]
 
 
 # NWS file names use two-letter month codes.

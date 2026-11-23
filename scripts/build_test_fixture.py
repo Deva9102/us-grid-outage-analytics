@@ -3,16 +3,18 @@
 Every fixture row is copied unchanged from a raw file in data/raw/. The sample is chosen so the
 pipeline's rules can be checked with exact expected values:
 
-    EAGLE-I   14 counties in 5 windows (UTC) plus two single readings:
+    EAGLE-I   14 counties in 5 windows (UTC), Monongalia WV in a sixth, plus two single readings:
                 W1 2022-10-25 00:00-20:00   Harris event matched by OE-417 incident (D40)
                 W2 2023-03-22 18:00-24:00   off-grid 20:31 run floored to 20:30 (D7)
                 W3 2024-05-23 18:00-05-24 12:00  nationwide feed gap 00:15-09:00 (D3, D10)
                 W4 2024-06-15 20:00-06-16 03:00  Rich UT readings above its customers (D4, D45)
                 W5 2024-07-08 00:00-07-12 00:00  Harris Beryl dropout (D19), Harris overcount (D4),
                                                  Kauai peak that sets its D35 floor
+                W6 2024-12-31 12:00-2025-01-02 00:00  Monongalia WV and Harris only: an outage
+                                                 running from Dec 31 into Jan 1, one event (D57)
               Kalawao HI: its first 2024 reading, so Hawaii's D21 state total is complete.
               Norton city VA: one reading; it has no denominator (D9).
-    MCC       the 14 counties and the Grand Total row (D5)
+    MCC       the 15 counties and the Grand Total row (D5)
     NOAA      storms whose match window (begin - 12 h to end + 1 h) overlaps a window in a
               fixture county, plus one water-area event (D30); NWS zone rows for their zones
     EIA-861   Sales rows for HI, UT, MA, TX, CA and VA 2024 (state totals, D21, D22) and the utilities
@@ -56,6 +58,10 @@ COUNTIES = [
     "49035", "49049", "49011", "49057", "49033",     # Salt Lake, Utah, Davis, Weber, Rich UT
 ]
 KALAWAO, NORTON = "15005", "51720"
+# W6: the year boundary (D57). Only Monongalia WV and Harris (which reports in every slot, so
+# the fixture's collection grid matches the full data); the other counties stay out of it.
+BOUNDARY_WINDOW = ("2024-12-31 12:00", "2025-01-02 00:00")
+BOUNDARY_COUNTIES = ["54061", "48201"]
 WATER_EVENT_TYPES = ("Marine Thunderstorm Wind", "Marine Strong Wind", "Marine High Wind", "Waterspout")
 SALES_STATES_2024 = ("HI", "UT", "MA", "TX", "CA", "VA")
 RELIABILITY_2024 = ("HI", "UT", "MA")
@@ -67,8 +73,14 @@ def sql_list(values) -> str:
     return ", ".join(f"'{v}'" for v in values)
 
 
-def window_sql(col: str) -> str:
-    return " OR ".join(f"({col} >= TIMESTAMP '{a}' AND {col} < TIMESTAMP '{b}')" for a, b in WINDOWS)
+def window_sql(col: str, windows=None) -> str:
+    return " OR ".join(f"({col} >= TIMESTAMP '{a}' AND {col} < TIMESTAMP '{b}')" for a, b in (windows or WINDOWS))
+
+
+def selection_sql(fips_col: str, time_col: str) -> str:
+    """Rows of the fixture counties in windows W1-W5, or of the boundary counties in W6."""
+    return (f"(({fips_col} IN ({sql_list(COUNTIES)}) AND ({window_sql(time_col)}))"
+            f" OR ({fips_col} IN ({sql_list(BOUNDARY_COUNTIES)}) AND ({window_sql(time_col, [BOUNDARY_WINDOW])})))")
 
 
 def copy_csv(con, query: str, path: Path) -> int:
@@ -78,7 +90,7 @@ def copy_csv(con, query: str, path: Path) -> int:
 
 
 def eaglei(con) -> None:
-    measure = {2022: "customers_out", 2023: '"sum"', 2024: "customers_out"}
+    measure = {2022: "customers_out", 2023: '"sum"', 2024: "customers_out", 2025: "customers_out"}
     last_window_start = WINDOWS[-1][0]
     for year in pipeline_config.load()["years"]["list"]:
         src = (RAW / "eaglei_parquet" / str(year) / f"eaglei_outages_{year}.parquet").as_posix()
@@ -93,13 +105,13 @@ def eaglei(con) -> None:
                    AND fips_code = '{NORTON}'"""
         query = f"""
             SELECT * FROM read_parquet('{src}')
-            WHERE (fips_code IN ({sql_list(COUNTIES)}) AND ({window_sql('CAST(run_start_time AS TIMESTAMP)')})) {extra}
+            WHERE {selection_sql('fips_code', 'CAST(run_start_time AS TIMESTAMP)')} {extra}
             ORDER BY run_start_time, fips_code
         """
         n = copy_csv(con, query, OUT / "eaglei" / str(year) / f"eaglei_outages_{year}.csv")
         print(f"  eaglei {year}: {n} rows ({measure[year]})")
     mcc = (RAW / "eaglei" / "metadata" / "MCC.csv").as_posix()
-    keys = sql_list([c.lstrip("0") for c in COUNTIES])
+    keys = sql_list([c.lstrip("0") for c in sorted(set(COUNTIES) | set(BOUNDARY_COUNTIES))])
     n = copy_csv(con, f"""
         SELECT * FROM read_csv('{mcc}', all_varchar = true)
         WHERE County_FIPS IN ({keys}) OR County_FIPS = 'Grand Total'
@@ -113,13 +125,15 @@ def noaa_and_zones(con) -> None:
         con.execute(f"CREATE OR REPLACE TABLE {name} AS {stmts[name]}")
     before = pipeline_config.get("storm_match.window_before_hours")
     after = pipeline_config.get("storm_match.window_after_hours")
-    overlaps = " OR ".join(
-        f"(s.begin_utc - INTERVAL {before} HOUR < TIMESTAMP '{b}' AND s.end_utc + INTERVAL {after} HOUR > TIMESTAMP '{a}')"
-        for a, b in WINDOWS)
+    def overlaps(windows) -> str:
+        return " OR ".join(
+            f"(s.begin_utc - INTERVAL {before} HOUR < TIMESTAMP '{b}' AND s.end_utc + INTERVAL {after} HOUR > TIMESTAMP '{a}')"
+            for a, b in windows)
     con.execute(f"""
         CREATE OR REPLACE TABLE fixture_storms AS
         SELECT DISTINCT s.event_id FROM silver_storm_events s
-        WHERE s.fips_code IN ({sql_list(COUNTIES)}) AND ({overlaps})
+        WHERE (s.fips_code IN ({sql_list(COUNTIES)}) AND ({overlaps(WINDOWS)}))
+           OR (s.fips_code IN ({sql_list(BOUNDARY_COUNTIES)}) AND ({overlaps([BOUNDARY_WINDOW])}))
         UNION
         SELECT MIN(event_id) FROM silver_storm_event_details
         WHERE area_type = 'water' AND event_type IN ({sql_list(WATER_EVENT_TYPES)})

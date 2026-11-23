@@ -1,0 +1,193 @@
+fips_code,county,state,customers_out,run_start_time
+48201,Harris,Texas,340,2025-01-01 00:00:00
+54061,Monongalia,West Virginia,3661,2025-01-01 00:00:00
+48201,Harris,Texas,350,2025-01-01 00:15:00
+54061,Monongalia,West Virginia,3529,2025-01-01 00:15:00
+48201,Harris,Texas,471,2025-01-01 00:30:00
+54061,Monongalia,West Virginia,3504,2025-01-01 00:30:00
+48201,Harris,Texas,450,2025-01-01 00:45:00
+54061,Monongalia,West Virginia,3075,2025-01-01 00:45:00
+48201,Harris,Texas,466,2025-01-01 01:00:00
+54061,Monongalia,West Virginia,3063,2025-01-01 01:00:00
+48201,Harris,Texas,464,2025-01-01 01:15:00
+54061,Monongalia,West Virginia,3062,2025-01-01 01:15:00
+48201,Harris,Texas,334,2025-01-01 01:30:00
+54061,Monongalia,West Virginia,1776,2025-01-01 01:30:00
+48201,Harris,Texas,335,2025-01-01 01:45:00
+54061,Monongalia,West Virginia,527,2025-01-01 01:45:00
+48201,Harris,Texas,316,2025-01-01 02:00:00
+54061,Monongalia,West Virginia,527,2025-01-01 02:00:00
+48201,Harris,Texas,314,2025-01-01 02:15:00
+54061,Monongalia,West Virginia,528,2025-01-01 02:15:00
+48201,Harris,Texas,312,2025-01-01 02:30:00
+54061,Monongalia,West Virginia,497,2025-01-01 02:30:00
+48201,Harris,Texas,307,2025-01-01 02:45:00
+54061,Monongalia,West Virginia,496,2025-01-01 02:45:00
+48201,Harris,Texas,310,2025-01-01 03:00:00
+54061,Monongalia,West Virginia,463,2025-01-01 03:00:00
+48201,Harris,Texas,349,2025-01-01 03:15:00
+54061,Monongalia,West Virginia,462,2025-01-01 03:15:00
+48201,Harris,Texas,345,2025-01-01 03:30:00
+54061,Monongalia,West Virginia,462,2025-01-01 03:30:00
+48201,Harris,Texas,326,2025-01-01 03:45:00
+54061,Monongalia,West Virginia,462,2025-01-01 03:45:00
+48201,Harris,Texas,321,2025-01-01 04:00:00
+54061,Monongalia,West Virginia,462,2025-01-01 04:00:00
+48201,Harris,Texas,228,2025-01-01 04:15:00
+54061,Monongalia,West Virginia,462,2025-01-01 04:15:00
+48201,Harris,Texas,199,2025-01-01 04:30:00
+54061,Monongalia,West Virginia,449,2025-01-01 04:30:00
+48201,Harris,Texas,199,2025-01-01 04:45:00
+54061,Monongalia,West Virginia,450,2025-01-01 04:45:00
+48201,Harris,Texas,201,2025-01-01 05:00:00
+54061,Monongalia,West Virginia,447,2025-01-01 05:00:00
+48201,Harris,Texas,198,2025-01-01 05:15:00
+54061,Monongalia,West Virginia,415,2025-01-01 05:15:00
+48201,Harris,Texas,200,2025-01-01 05:30:00
+54061,Monongalia,West Virginia,415,2025-01-01 05:30:00
+48201,Harris,Texas,171,2025-01-01 05:45:00
+54061,Monongalia,West Virginia,415,2025-01-01 05:45:00
+48201,Harris,Texas,173,2025-01-01 06:00:00
+54061,Monongalia,West Virginia,414,2025-01-01 06:00:00
+48201,Harris,Texas,242,2025-01-01 06:15:00
+54061,Monongalia,West Virginia,414,2025-01-01 06:15:00
+48201,Harris,Texas,299,2025-01-01 06:30:00
+54061,Monongalia,West Virginia,414,2025-01-01 06:30:00
+48201,Harris,Texas,417,2025-01-01 06:45:00
+54061,Monongalia,West Virginia,414,2025-01-01 06:45:00
+48201,Harris,Texas,423,2025-01-01 07:00:00
+54061,Monongalia,West Virginia,414,2025-01-01 07:00:00
+48201,Harris,Texas,421,2025-01-01 07:15:00
+54061,Monongalia,West Virginia,415,2025-01-01 07:15:00
+48201,Harris,Texas,463,2025-01-01 07:30:00
+54061,Monongalia,West Virginia,415,2025-01-01 07:30:00
+48201,Harris,Texas,464,2025-01-01 07:45:00
+54061,Monongalia,West Virginia,415,2025-01-01 07:45:00
+48201,Harris,Texas,464,2025-01-01 08:00:00
+54061,Monongalia,West Virginia,415,2025-01-01 08:00:00
+48201,Harris,Texas,463,2025-01-01 08:15:00
+54061,Monongalia,West Virginia,416,2025-01-01 08:15:00
+48201,Harris,Texas,413,2025-01-01 08:30:00
+54061,Monongalia,West Virginia,416,2025-01-01 08:30:00
+48201,Harris,Texas,413,2025-01-01 08:45:00
+54061,Monongalia,West Virginia,416,2025-01-01 08:45:00
+48201,Harris,Texas,410,2025-01-01 09:00:00
+54061,Monongalia,West Virginia,416,2025-01-01 09:00:00
+48201,Harris,Texas,410,2025-01-01 09:15:00
+54061,Monongalia,West Virginia,416,2025-01-01 09:15:00
+48201,Harris,Texas,400,2025-01-01 09:30:00
+54061,Monongalia,West Virginia,416,2025-01-01 09:30:00
+48201,Harris,Texas,404,2025-01-01 09:45:00
+54061,Monongalia,West Virginia,417,2025-01-01 09:45:00
+48201,Harris,Texas,301,2025-01-01 10:00:00
+54061,Monongalia,West Virginia,417,2025-01-01 10:00:00
+48201,Harris,Texas,304,2025-01-01 10:15:00
+54061,Monongalia,West Virginia,417,2025-01-01 10:15:00
+48201,Harris,Texas,305,2025-01-01 10:30:00
+54061,Monongalia,West Virginia,417,2025-01-01 10:30:00
+48201,Harris,Texas,308,2025-01-01 10:45:00
+54061,Monongalia,West Virginia,417,2025-01-01 10:45:00
+48201,Harris,Texas,307,2025-01-01 11:00:00
+54061,Monongalia,West Virginia,417,2025-01-01 11:00:00
+48201,Harris,Texas,307,2025-01-01 11:15:00
+54061,Monongalia,West Virginia,417,2025-01-01 11:15:00
+48201,Harris,Texas,307,2025-01-01 11:30:00
+54061,Monongalia,West Virginia,417,2025-01-01 11:30:00
+48201,Harris,Texas,316,2025-01-01 11:45:00
+54061,Monongalia,West Virginia,417,2025-01-01 11:45:00
+48201,Harris,Texas,315,2025-01-01 12:00:00
+54061,Monongalia,West Virginia,1372,2025-01-01 12:00:00
+48201,Harris,Texas,196,2025-01-01 12:15:00
+54061,Monongalia,West Virginia,1372,2025-01-01 12:15:00
+48201,Harris,Texas,195,2025-01-01 12:30:00
+54061,Monongalia,West Virginia,677,2025-01-01 12:30:00
+48201,Harris,Texas,198,2025-01-01 12:45:00
+54061,Monongalia,West Virginia,677,2025-01-01 12:45:00
+48201,Harris,Texas,457,2025-01-01 13:00:00
+54061,Monongalia,West Virginia,677,2025-01-01 13:00:00
+48201,Harris,Texas,464,2025-01-01 13:15:00
+54061,Monongalia,West Virginia,677,2025-01-01 13:15:00
+48201,Harris,Texas,331,2025-01-01 13:30:00
+54061,Monongalia,West Virginia,676,2025-01-01 13:30:00
+48201,Harris,Texas,334,2025-01-01 13:45:00
+54061,Monongalia,West Virginia,676,2025-01-01 13:45:00
+48201,Harris,Texas,824,2025-01-01 14:00:00
+54061,Monongalia,West Virginia,676,2025-01-01 14:00:00
+48201,Harris,Texas,821,2025-01-01 14:15:00
+54061,Monongalia,West Virginia,676,2025-01-01 14:15:00
+48201,Harris,Texas,823,2025-01-01 14:30:00
+54061,Monongalia,West Virginia,676,2025-01-01 14:30:00
+48201,Harris,Texas,816,2025-01-01 14:45:00
+54061,Monongalia,West Virginia,677,2025-01-01 14:45:00
+48201,Harris,Texas,493,2025-01-01 15:00:00
+54061,Monongalia,West Virginia,677,2025-01-01 15:00:00
+48201,Harris,Texas,527,2025-01-01 15:15:00
+54061,Monongalia,West Virginia,677,2025-01-01 15:15:00
+48201,Harris,Texas,531,2025-01-01 15:30:00
+54061,Monongalia,West Virginia,677,2025-01-01 15:30:00
+48201,Harris,Texas,342,2025-01-01 15:45:00
+54061,Monongalia,West Virginia,681,2025-01-01 15:45:00
+48201,Harris,Texas,332,2025-01-01 16:00:00
+54061,Monongalia,West Virginia,681,2025-01-01 16:00:00
+48201,Harris,Texas,303,2025-01-01 16:15:00
+54061,Monongalia,West Virginia,683,2025-01-01 16:15:00
+48201,Harris,Texas,303,2025-01-01 16:30:00
+54061,Monongalia,West Virginia,519,2025-01-01 16:30:00
+48201,Harris,Texas,301,2025-01-01 16:45:00
+54061,Monongalia,West Virginia,537,2025-01-01 16:45:00
+48201,Harris,Texas,272,2025-01-01 17:00:00
+54061,Monongalia,West Virginia,534,2025-01-01 17:00:00
+48201,Harris,Texas,275,2025-01-01 17:15:00
+54061,Monongalia,West Virginia,534,2025-01-01 17:15:00
+48201,Harris,Texas,202,2025-01-01 17:30:00
+54061,Monongalia,West Virginia,534,2025-01-01 17:30:00
+48201,Harris,Texas,232,2025-01-01 17:45:00
+54061,Monongalia,West Virginia,533,2025-01-01 17:45:00
+48201,Harris,Texas,289,2025-01-01 18:00:00
+54061,Monongalia,West Virginia,533,2025-01-01 18:00:00
+48201,Harris,Texas,287,2025-01-01 18:15:00
+54061,Monongalia,West Virginia,533,2025-01-01 18:15:00
+48201,Harris,Texas,280,2025-01-01 18:30:00
+54061,Monongalia,West Virginia,533,2025-01-01 18:30:00
+48201,Harris,Texas,280,2025-01-01 18:45:00
+54061,Monongalia,West Virginia,446,2025-01-01 18:45:00
+48201,Harris,Texas,282,2025-01-01 19:00:00
+54061,Monongalia,West Virginia,446,2025-01-01 19:00:00
+48201,Harris,Texas,283,2025-01-01 19:15:00
+54061,Monongalia,West Virginia,446,2025-01-01 19:15:00
+48201,Harris,Texas,246,2025-01-01 19:30:00
+54061,Monongalia,West Virginia,192,2025-01-01 19:30:00
+48201,Harris,Texas,220,2025-01-01 19:45:00
+54061,Monongalia,West Virginia,192,2025-01-01 19:45:00
+48201,Harris,Texas,53,2025-01-01 20:00:00
+54061,Monongalia,West Virginia,191,2025-01-01 20:00:00
+48201,Harris,Texas,55,2025-01-01 20:15:00
+54061,Monongalia,West Virginia,192,2025-01-01 20:15:00
+48201,Harris,Texas,217,2025-01-01 20:30:00
+54061,Monongalia,West Virginia,193,2025-01-01 20:30:00
+48201,Harris,Texas,218,2025-01-01 20:45:00
+54061,Monongalia,West Virginia,192,2025-01-01 20:45:00
+48201,Harris,Texas,248,2025-01-01 21:00:00
+54061,Monongalia,West Virginia,191,2025-01-01 21:00:00
+48201,Harris,Texas,245,2025-01-01 21:15:00
+54061,Monongalia,West Virginia,185,2025-01-01 21:15:00
+48201,Harris,Texas,245,2025-01-01 21:30:00
+54061,Monongalia,West Virginia,185,2025-01-01 21:30:00
+48201,Harris,Texas,246,2025-01-01 21:45:00
+54061,Monongalia,West Virginia,173,2025-01-01 21:45:00
+48201,Harris,Texas,254,2025-01-01 22:00:00
+54061,Monongalia,West Virginia,173,2025-01-01 22:00:00
+48201,Harris,Texas,258,2025-01-01 22:15:00
+54061,Monongalia,West Virginia,163,2025-01-01 22:15:00
+48201,Harris,Texas,223,2025-01-01 22:30:00
+54061,Monongalia,West Virginia,163,2025-01-01 22:30:00
+48201,Harris,Texas,216,2025-01-01 22:45:00
+54061,Monongalia,West Virginia,151,2025-01-01 22:45:00
+48201,Harris,Texas,213,2025-01-01 23:00:00
+54061,Monongalia,West Virginia,152,2025-01-01 23:00:00
+48201,Harris,Texas,2124,2025-01-01 23:15:00
+54061,Monongalia,West Virginia,152,2025-01-01 23:15:00
+48201,Harris,Texas,2126,2025-01-01 23:30:00
+54061,Monongalia,West Virginia,152,2025-01-01 23:30:00
+48201,Harris,Texas,1845,2025-01-01 23:45:00
+54061,Monongalia,West Virginia,153,2025-01-01 23:45:00
