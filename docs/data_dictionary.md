@@ -1,7 +1,7 @@
 <!-- Written by scripts/data_dictionary.py from the dbt docs; edit dbt/models/*.yml, not this file. -->
 # Data dictionary: dbt marts
 
-Every table and column of the star schema in `dbt/` (D66), with the type the warehouse reports (databricks), its meaning and where it comes from. The marts are tables in `workspace.outages`; they reshape the Gold tables and never recompute a metric. Rule numbers (D1-D68) refer to `docs/decisions.md`. An event counts in the year it starts.
+Every table and column of the star schema in `dbt/` (D66), with the type the warehouse reports (databricks), its meaning and where it comes from. The marts are tables in `workspace.outages`; they reshape the Gold tables and never recompute a metric. Rule numbers (D-numbers) refer to `docs/decisions.md`. An event counts in the year it starts.
 
 | Table | Grain | Rows from |
 |---|---|---|
@@ -18,6 +18,7 @@ Every table and column of the star schema in `dbt/` (D66), with the type the war
 | [`dim_state`](#dim_state) | One row per state, DC and territory (53). | `bronze_state_regions`, `gold_state_coverage` |
 | [`dim_storm_type`](#dim_storm_type) | One row per NOAA event type, with the severity rank and tier the storm attribution uses (D41), plus 'unmatched' for events with no storm (D37). | `bronze_storm_event_severity` |
 | [`dim_utility`](#dim_utility) | One row per EIA-861 utility number with its newest name and ownership (D32) and its parent company (D39). | `silver_utility_reliability`, `gold_utility_reliability` |
+| [`dim_year`](#dim_year) | One row per year any mart reports, 2018-2025 (D70). | `dim_date`, `fct_published_coverage` |
 
 ## fct_county_coverage
 
@@ -284,3 +285,13 @@ One row per EIA-861 utility number with its newest name and ownership (D32) and 
 | `first_year` | integer | First year with a reliability report. | computed in `dim_utility.sql` |
 | `last_year` | integer | Newest year with a reliability report. | computed in `dim_utility.sql` |
 | `states_reported` | bigint | States the utility reported reliability in. | computed in `dim_utility.sql` |
+
+## dim_year
+
+One row per year any mart reports, 2018-2025 (D70). The year slicer for Power BI: the year-grain facts join here directly and events join through dim_date.
+
+| Column | Type | Meaning | Source |
+|---|---|---|---|
+| `year` | integer | Calendar year (primary key). | `dim_date.year` |
+| `has_readings` | boolean | EAGLE-I readings, and so events and reliability rows, exist for the year. | computed in `dim_year.sql` |
+| `has_published_coverage` | boolean | EAGLE-I published coverage and the data quality index exist for the year (D67). | computed in `dim_year.sql` |

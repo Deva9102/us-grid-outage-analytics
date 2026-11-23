@@ -45,7 +45,7 @@ def main() -> None:
         f"Every table and column of the star schema in `dbt/` (D66), with the type the warehouse reports"
         f" ({adapter}), its meaning and where it comes from. The marts are tables in"
         " `workspace.outages`; they reshape the Gold tables and never recompute a metric. Rule numbers"
-        " (D1-D68) refer to `docs/decisions.md`. An event counts in the year it starts.",
+        " (D-numbers) refer to `docs/decisions.md`. An event counts in the year it starts.",
         "",
         "| Table | Grain | Rows from |",
         "|---|---|---|",

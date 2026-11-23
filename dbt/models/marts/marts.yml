@@ -26,6 +26,19 @@ models:
       - name: month_start
         description: First day of the month, for monthly roll-ups.
 
+  - name: dim_year
+    description: >
+      One row per year any mart reports, 2018-2025 (D70). The year slicer for Power BI: the
+      year-grain facts join here directly and events join through dim_date.
+    columns:
+      - name: year
+        description: Calendar year (primary key).
+        data_tests: [unique, not_null]
+      - name: has_readings
+        description: EAGLE-I readings, and so events and reliability rows, exist for the year.
+      - name: has_published_coverage
+        description: EAGLE-I published coverage and the data quality index exist for the year (D67).
+
   - name: dim_state
     description: >
       One row per state, DC and territory (53). The 50 states and DC are the ranked jurisdictions;
@@ -327,7 +340,12 @@ models:
                 field: state_abbr
       - name: year
         description: Calendar year (events count in the year they start).
-        data_tests: [not_null]
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_year')
+                field: year
       - name: customers
         description: County denominator (D13).
       - name: events
@@ -377,7 +395,12 @@ models:
                 field: state_abbr
       - name: year
         description: Calendar year.
-        data_tests: [not_null]
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_year')
+                field: year
       - name: events
         description: Events starting in the year in the state's counties.
       - name: customer_hours_lost
@@ -424,7 +447,12 @@ models:
                 field: state_abbr
       - name: year
         description: Calendar year.
-        data_tests: [not_null]
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_year')
+                field: year
       - name: events
         description: Events starting in the year.
       - name: customer_hours_lost
@@ -452,7 +480,12 @@ models:
         data_tests: [unique, not_null]
       - name: data_year
         description: EIA-861 data year.
-        data_tests: [not_null]
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_year')
+                field: year
       - name: utility_number
         description: EIA utility number.
         data_tests:
@@ -535,7 +568,12 @@ models:
         data_tests: [not_null]
       - name: year
         description: Calendar year of the readings.
-        data_tests: [not_null]
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_year')
+                field: year
       - name: readings
         description: >
           15-minute readings in the year. EAGLE-I has a row only when customers are out (D3), so
@@ -568,7 +606,12 @@ models:
                 where: "state_abbr NOT IN ('AS', 'GU', 'MP')"
       - name: year
         description: Year of the published coverage.
-        data_tests: [not_null]
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_year')
+                field: year
       - name: total_customers
         description: Customers in the state, as EAGLE-I counts them.
       - name: min_covered
@@ -596,7 +639,12 @@ models:
                 values: ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X']
       - name: year
         description: Year of the index.
-        data_tests: [not_null]
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_year')
+                field: year
       - name: success_rate_pct
         description: Share of collection attempts that succeeded, in percent.
       - name: percent_enabled
