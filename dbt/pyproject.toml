@@ -1,0 +1,19 @@
+[project]
+name = "us-grid-outage-dbt"
+version = "0.1.0"
+description = "dbt star schema over the US power outages Gold tables"
+authors = [
+    { name = "Deva9102" }
+]
+# Its own environment: dbt-databricks needs databricks-sdk < 0.158, the pipeline uses a newer one (D65).
+requires-python = ">=3.13"
+dependencies = [
+    "dbt-core>=1.12.7",
+    "dbt-databricks>=1.13.1",
+    "dbt-duckdb>=1.11.1",
+    "dbt-snowflake>=1.12.5",
+    "python-dotenv>=1.2.4",
+]
+
+[tool.uv]
+package = false

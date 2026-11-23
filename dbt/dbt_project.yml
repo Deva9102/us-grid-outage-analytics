@@ -1,0 +1,31 @@
+# dbt star schema over the Gold tables (D66). Run it with dbt/run_dbt.py or the make targets;
+# see dbt/README.md.
+name: us_grid_outages
+version: "1.0.0"
+config-version: 2
+profile: us_grid_outages
+
+model-paths: ["models"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+target-path: target
+clean-targets: ["target", "dbt_packages"]
+
+flags:
+  send_anonymous_usage_stats: false
+
+vars:
+  # Copies of config/pipeline.yml values; tests/test_dbt_project.py keeps them in step.
+  denominator_base_years: [2022, 2023, 2024]   # denominator.base_years (D58)
+  ranked_jurisdictions: 51                      # ranking.ranked_jurisdictions (D43)
+  # dim_date covers every event start: the first configured year to the end of the last one.
+  date_spine_start: "2022-01-01"
+  date_spine_end: "2026-01-01"
+
+models:
+  us_grid_outages:
+    +materialized: table
+
+tests:
+  us_grid_outages:
+    +severity: error

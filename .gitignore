@@ -15,3 +15,8 @@ data/gold_exports/*.csv
 .tools/
 build/
 .databricks/
+# dbt (D66): build output, packages and the local profile (credentials come from .env)
+dbt/target/
+dbt/dbt_packages/
+dbt/profiles.yml
+dbt/.user.yml

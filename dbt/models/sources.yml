@@ -1,0 +1,69 @@
+version: 2
+
+sources:
+  - name: outages
+    description: >
+      The pipeline's Silver and Gold tables in workspace.outages, built by sql/databricks/ (or by
+      scripts/duckdb_pipeline.py in a local DuckDB file). dbt only reads them; every rule behind
+      them is in docs/decisions.md. Two small Bronze reference lookups are read as well: the state
+      FIPS lookup (D16) and the NOAA event type severity list (D41).
+    database: "{{ var('source_database', target.database) }}"
+    schema: "{{ var('source_schema', target.schema) }}"
+    tables:
+      - name: silver_outages
+        description: >
+          EAGLE-I county readings, every 15-minute run, all years unified, deduplicated, UTC,
+          partitioned by year and state (D1-D16). Read by dim_county for county names and the D35
+          peak floors.
+        config:
+          loaded_at_field: reading_time
+          # EAGLE-I is released once a year; the newest reading is months old by design.
+          freshness:
+            warn_after: {count: 400, period: day}
+            error_after: {count: 800, period: day}
+        columns:
+          - name: fips_code
+            description: 5-digit county FIPS.
+          - name: reading_time
+            description: Start of the 15-minute collection run, UTC (D1, D7).
+          - name: customers_out
+            description: Customers out as reported, never capped (D4).
+          - name: year
+            description: Calendar year of reading_time, UTC.
+
+      - name: dim_county_customers
+        description: One customer denominator per county for all years (D5, D9, D12, D13, D21, D35, D36, D58).
+
+      - name: silver_utility_reliability
+        description: EIA-861 SAIDI and SAIFI per utility, state and year, with reporting standard and size band (D32).
+
+      - name: gold_outage_events
+        description: >
+          One row per county outage event (D3, D4, D10, D17-D19, D64). An event counts in the year
+          it starts (event_year).
+      - name: gold_event_storm_match
+        description: The storm attributed to each event, or 'unmatched' (D37, D41, D42).
+      - name: gold_county_reliability
+        description: Outage hours per 1,000 customers per county and year, 50 states and DC, ranked with footnotes (D38, D44, D45, D60, D61).
+      - name: gold_state_reliability
+        description: Outage hours per 1,000 customers per state and year, 50 states and DC, ranked (D38, D43, D52, D60).
+      - name: gold_state_coverage
+        description: EAGLE-I customer coverage per state against EIA-861 (D22, D52).
+      - name: gold_territory_reliability
+        description: Puerto Rico and the US Virgin Islands per year, unranked (D43).
+      - name: gold_utility_reliability
+        description: IEEE 1366 utilities ranked within size band and year (D39).
+      - name: gold_utility_reliability_other
+        description: Utilities reporting under another standard, listed and never ranked (D23, D39).
+      - name: gold_quality_results
+        description: Every quality gate result of every run (D48, D55).
+        config:
+          loaded_at_field: run_ts
+          freshness:
+            warn_after: {count: 8, period: day}
+            error_after: {count: 35, period: day}
+
+      - name: bronze_state_regions
+        description: Reference lookup, state FIPS to state, Census region and division, FEMA region (D8, D16).
+      - name: bronze_storm_event_severity
+        description: Reference lookup, NOAA event type to severity rank and tier used by the storm attribution (D41).

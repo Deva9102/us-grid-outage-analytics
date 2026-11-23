@@ -1,0 +1,32 @@
+# Copy to dbt/profiles.yml (gitignored); dbt/run_dbt.py does this on first use. No secrets live
+# here: every credential is read from the environment, which run_dbt.py loads from ../.env.
+us_grid_outages:
+  target: duckdb
+  outputs:
+    # The pipeline's own schema; the marts are new tables next to the Gold tables (D66).
+    databricks:
+      type: databricks
+      catalog: workspace
+      schema: outages
+      host: "{{ env_var('DATABRICKS_SERVER_HOSTNAME') }}"
+      http_path: "{{ env_var('DATABRICKS_HTTP_PATH') }}"
+      token: "{{ env_var('DATABRICKS_TOKEN') }}"
+      threads: 4
+    # A DuckDB file built by scripts/build_duckdb.py: the test fixture by default (CI), or the
+    # full data with DBT_DUCKDB_PATH=build/duckdb/full.duckdb.
+    duckdb:
+      type: duckdb
+      path: "{{ env_var('DBT_DUCKDB_PATH', '../build/duckdb/fixture.duckdb') }}"
+      schema: main
+      threads: 4
+    # Placeholder for the warehouse copy (built later, in the project's own database only).
+    snowflake:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT', 'not_configured') }}"
+      user: "{{ env_var('SNOWFLAKE_USER', 'not_configured') }}"
+      password: "{{ env_var('SNOWFLAKE_PASSWORD', 'not_configured') }}"
+      role: "{{ env_var('SNOWFLAKE_ROLE', 'not_configured') }}"
+      warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE', 'not_configured') }}"
+      database: "{{ env_var('SNOWFLAKE_DATABASE', 'US_GRID_OUTAGES') }}"
+      schema: "{{ env_var('SNOWFLAKE_SCHEMA', 'MARTS') }}"
+      threads: 4

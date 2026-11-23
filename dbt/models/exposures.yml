@@ -1,0 +1,26 @@
+version: 2
+
+exposures:
+  - name: power_bi_outage_dashboard
+    label: US power outages and storm impact (Power BI)
+    type: dashboard
+    maturity: low
+    description: >
+      The planned Power BI dashboard, built by hand from these marts (powerbi/data_model.md,
+      powerbi/measures.md). Pages: top events and their storms (questions 1 and 4), state and
+      county rankings per 1,000 customers with footnotes (question 2), regional comparison
+      (question 3) and utility SAIDI / SAIFI with Eversource and National Grid against peers
+      (question 5). Years are event start years.
+    owner:
+      name: Deva9102
+    depends_on:
+      - ref('fct_outage_events')
+      - ref('fct_state_reliability')
+      - ref('fct_county_reliability')
+      - ref('fct_territory_reliability')
+      - ref('fct_utility_reliability')
+      - ref('dim_county')
+      - ref('dim_state')
+      - ref('dim_date')
+      - ref('dim_storm_type')
+      - ref('dim_utility')

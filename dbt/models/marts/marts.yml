@@ -1,0 +1,502 @@
+version: 2
+
+models:
+  # ---------------------------------------------------------------------------------------------
+  # Dimensions
+  # ---------------------------------------------------------------------------------------------
+  - name: dim_date
+    description: >
+      One row per calendar day of the configured years. Facts join on the day an event starts:
+      an event counts in the year it starts (UTC), even when it runs into the next year.
+    columns:
+      - name: date_day
+        description: Calendar day (primary key).
+        data_tests: [unique, not_null]
+      - name: date_key
+        description: The day as an integer yyyymmdd, for tools that prefer integer keys.
+        data_tests: [unique, not_null]
+      - name: year
+        description: Calendar year.
+      - name: quarter
+        description: Calendar quarter, 1-4.
+      - name: month
+        description: Calendar month, 1-12.
+      - name: day_of_month
+        description: Day of the month, 1-31.
+      - name: month_start
+        description: First day of the month, for monthly roll-ups.
+
+  - name: dim_state
+    description: >
+      One row per state, DC and territory (53). The 50 states and DC are the ranked jurisdictions;
+      Puerto Rico and the US Virgin Islands are reported but never ranked (D43).
+    columns:
+      - name: state_abbr
+        description: 2-letter state or territory code (primary key).
+        data_tests: [unique, not_null]
+      - name: state_fips
+        description: 2-digit state FIPS code, the prefix of every county FIPS in the state (D16).
+        data_tests: [unique, not_null]
+      - name: state_name
+        description: State or territory name.
+        data_tests: [not_null]
+      - name: census_region
+        description: Census region, or Territory (D8).
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['Northeast', 'Midwest', 'South', 'West', 'Territory']
+      - name: census_division
+        description: Census division, or Territory (D8).
+      - name: fema_region
+        description: FEMA region I-X (D8).
+      - name: is_ranked_jurisdiction
+        description: True for the 50 states and DC, the only places ranked (D43, D44).
+        data_tests: [not_null]
+      - name: total_counties
+        description: Counties or county equivalents in the state (D22).
+      - name: eaglei_counties
+        description: Counties EAGLE-I reports in the state (D22).
+      - name: eaglei_customers
+        description: Customers of the EAGLE-I counties, from the D13 denominators (D22).
+      - name: eia_customers
+        description: EIA-861 customers in the state for calibration.eia_year (D21, D22).
+      - name: customer_coverage
+        description: eaglei_customers / eia_customers, capped at 1; NULL when unknown (D22, D52).
+      - name: coverage_status
+        description: covered, below_minimum (under 70%) or coverage_unknown (D22, D52).
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['covered', 'below_minimum', 'coverage_unknown']
+      - name: coverage_ranking_eligible
+        description: Coverage allows the state to be ranked (D22, D52). Other rules can still footnote a year (D60).
+      - name: calibration_factor
+        description: Factor applied to the state's county denominators (D21); 1 when not calibrated.
+
+  - name: dim_county
+    description: >
+      One row per county or reporting unit with a customer denominator (D13), including PR PREPA
+      regions, VI districts and Connecticut's planning regions (D60). Join on fips_code, never on
+      the county name.
+    columns:
+      - name: fips_code
+        description: 5-digit county FIPS (primary key).
+        data_tests: [unique, not_null]
+      - name: county
+        description: >
+          County name as EAGLE-I reports it in its newest year. NULL for a county that is in the
+          MCC file but has no reading yet.
+      - name: state_abbr
+        description: 2-letter state code from the FIPS prefix (D16).
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_state')
+                field: state_abbr
+      - name: state_name
+        description: State name.
+      - name: census_region
+        description: Census region, or Territory (D8).
+      - name: fema_region
+        description: FEMA region I-X (D8).
+      - name: customers
+        description: The county's one denominator for all years (D13); NULL when none (D9).
+      - name: denominator_source
+        description: Where the denominator comes from (D5, D12, D13).
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['total_customers_2024', 'max_mcc_2024', 'mcc']
+      - name: has_denominator
+        description: False when the county has no denominator (D9).
+        data_tests: [not_null]
+      - name: denominator_mismatch
+        description: MCC and 2024 total_customers differ by more than 2x (D12).
+      - name: calibration_factor
+        description: Factor applied to this county's denominator (D21, D35).
+      - name: state_calibration_factor
+        description: The state's D21 factor (EAGLE-I total over EIA-861 total), 1 when not calibrated.
+      - name: is_calibrated
+        description: The state was calibrated to EIA-861 (D21).
+      - name: peak_floor_applied
+        description: The calibrated denominator was raised to the county's peak customers out (D35).
+      - name: peak_floor_skipped
+        description: The peak was over 1.25x the uncalibrated denominator, so no floor (D36).
+      - name: base_peak_customers_out
+        description: Highest customers out in the denominator base years 2022-2024, the D35 floor (D58).
+      - name: first_reported_year
+        description: First year EAGLE-I reports the county; it has reliability rows from then on (D61).
+
+  - name: dim_storm_type
+    description: >
+      One row per NOAA event type, with the severity rank and tier the storm attribution uses
+      (D41), plus 'unmatched' for events with no storm (D37).
+    columns:
+      - name: storm_type
+        description: NOAA event type, or 'unmatched' (primary key).
+        data_tests: [unique, not_null]
+      - name: severity_rank
+        description: 1 = most severe; ties broken by overlap (D41). NULL for 'unmatched'.
+      - name: storm_tier
+        description: Grouping of event types used in the findings.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['tropical_cyclone', 'tornado', 'ice_snow', 'wind', 'flood', 'wildfire',
+                         'temperature', 'lightning_hail', 'other', 'not_causal', 'unmatched']
+      - name: can_cause_outage
+        description: The event type can be matched to an outage (D37).
+
+  - name: dim_utility
+    description: >
+      One row per EIA-861 utility number with its newest name and ownership (D32) and its parent
+      company (D39). Utility reliability comes only from EIA-861, never from EAGLE-I counties (D23).
+    columns:
+      - name: utility_number
+        description: EIA utility number (primary key).
+        data_tests: [unique, not_null]
+      - name: utility_name
+        description: Name in the newest report.
+        data_tests: [not_null]
+      - name: ownership
+        description: Ownership type as EIA reports it.
+      - name: parent_company
+        description: Parent company where known (D39), e.g. Eversource or National Grid.
+      - name: is_eversource_or_national_grid
+        description: One of the Eversource or National Grid operating companies compared in question 5 (D39).
+        data_tests: [not_null]
+      - name: first_year
+        description: First year with a reliability report.
+      - name: last_year
+        description: Newest year with a reliability report.
+      - name: states_reported
+        description: States the utility reported reliability in.
+
+  # ---------------------------------------------------------------------------------------------
+  # Facts
+  # ---------------------------------------------------------------------------------------------
+  - name: fct_outage_events
+    description: >
+      One row per county outage event: readings at or above the county's threshold, a gap of more
+      than 1 hour of active runs starts a new event (D17, D18). Event-year convention: an event
+      counts in the year it starts (event_year and event_date from event_start, UTC), also when it
+      runs into the next year, so customer-hours are never split across years (D57, D64).
+      Customer-hours are capped at the county denominator (D4).
+    columns:
+      - name: event_id
+        description: <fips_code>-<number of the event in its county> (primary key).
+        data_tests: [unique, not_null]
+      - name: fips_code
+        description: County FIPS.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_county')
+                field: fips_code
+      - name: state_abbr
+        description: 2-letter state code.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_state')
+                field: state_abbr
+      - name: event_date
+        description: Day the event starts (UTC); joins dim_date.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_day
+      - name: event_year
+        description: Year the event starts (UTC). The year an event counts in.
+        data_tests: [not_null]
+      - name: event_start
+        description: First qualifying reading, UTC.
+      - name: event_end
+        description: End of the last qualifying run, UTC (D17).
+      - name: duration_hours
+        description: event_end - event_start in hours.
+      - name: reading_count
+        description: Qualifying readings in the event.
+      - name: peak_customers_out
+        description: Highest customers out, uncapped (D4).
+      - name: event_threshold
+        description: The county's event threshold, GREATEST(100, 0.25% of customers) (D18).
+      - name: customer_hours_lost
+        description: Customer-hours, each reading capped at the denominator (D4).
+        data_tests: [not_null]
+      - name: customer_hours_lost_raw
+        description: Customer-hours, uncapped.
+      - name: customers
+        description: County denominator (D13).
+      - name: denominator_source
+        description: Where the denominator comes from (D13).
+      - name: has_denominator
+        description: False when the county has no denominator (D9).
+      - name: ranking_eligible
+        description: Denominator of at least 1,000 customers (D11).
+      - name: peak_out_per_1000
+        description: Capped peak per 1,000 customers.
+      - name: customer_hours_per_1000
+        description: Customer-hours per 1,000 customers.
+      - name: exceeds_customers
+        description: Some reading above the denominator (D4).
+      - name: spans_feed_gap
+        description: A nationwide feed gap falls inside the event (D10).
+      - name: feed_gap_hours
+        description: Hours of nationwide feed gap inside the event (D10).
+      - name: spans_dropout
+        description: A county feed dropout falls inside the event (D19).
+      - name: dropout_hours
+        description: Hours of dropout inside the event (D19).
+      - name: bridged_empty_hours
+        description: Hours of empty readings bridged inside the event (D64); they add no customer-hours.
+      - name: spans_empty_gap
+        description: The event starts or ends next to an empty run too long to bridge (D64).
+      - name: storm_type
+        description: NOAA event type attributed to the outage, or 'unmatched' (D37, D41).
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_storm_type')
+                field: storm_type
+      - name: storm_tier
+        description: Tier of the attributed storm; NULL when unmatched.
+      - name: storm_event_id
+        description: NOAA event id of the attributed storm.
+      - name: storm_begin_utc
+        description: Start of the attributed storm, UTC (D29).
+      - name: storm_end_utc
+        description: End of the attributed storm, UTC (D29).
+      - name: overlap_hours
+        description: Hours the storm window overlaps the event (D37, D42).
+      - name: attribution_rule
+        description: active_at_start (most severe storm active at the start) or largest_overlap (D41).
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['active_at_start', 'largest_overlap']
+      - name: most_severe_storm_type
+        description: Most severe type among the candidate storms (D41).
+      - name: candidate_storms
+        description: Storms whose window overlapped the event (D37).
+
+  - name: fct_county_reliability
+    description: >
+      Outage hours per 1,000 customers per county and year for the 50 states and DC, ranked
+      nationally and within the state (D38, D44). A county has rows from its first reported year
+      (D61); events count in the year they start. Unranked rows carry the footnote reason.
+    columns:
+      - name: county_year_key
+        description: <fips_code>-<year> (primary key).
+        data_tests: [unique, not_null]
+      - name: fips_code
+        description: County FIPS.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_county')
+                field: fips_code
+      - name: state_abbr
+        description: 2-letter state code.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_state')
+                field: state_abbr
+      - name: year
+        description: Calendar year (events count in the year they start).
+        data_tests: [not_null]
+      - name: customers
+        description: County denominator (D13).
+      - name: events
+        description: Events starting in the year.
+      - name: customer_hours_lost
+        description: Capped customer-hours of those events (D4).
+      - name: max_peak_customers_out
+        description: Highest event peak in the year.
+      - name: outage_hours_per_1000_customers
+        description: customer_hours_lost per 1,000 customers, the ranking measure (D38).
+      - name: capped_customer_hours
+        description: Customer-hours removed by the D4 cap.
+      - name: capped_share
+        description: Share of raw customer-hours removed by the cap (D45).
+      - name: peak_to_customers
+        description: Highest reading over the denominator (D45).
+      - name: ranking_eligible
+        description: Denominator of at least 1,000 customers (D11).
+      - name: is_ranked
+        description: The row has a national rank.
+      - name: national_rank
+        description: Rank among ranked counties in the year, 1 = most outage hours.
+      - name: state_rank
+        description: Rank within the state.
+      - name: rank_without_footnotes
+        description: The rank the county would have had without its footnote (D45, D46).
+      - name: footnote_reason
+        description: Why the row is not ranked (D9, D11, D22, D45, D46, D52, D60); NULL when ranked.
+      - name: footnote_evidence
+        description: The numbers behind a D45 or D46 footnote.
+
+  - name: fct_state_reliability
+    description: >
+      Outage hours per 1,000 customers per state and year for the 50 states and DC, ranked
+      nationally and within the Census region (D38, D43). Events count in the year they start.
+    columns:
+      - name: state_year_key
+        description: <state_abbr>-<year> (primary key).
+        data_tests: [unique, not_null]
+      - name: state_abbr
+        description: 2-letter state code.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_state')
+                field: state_abbr
+      - name: year
+        description: Calendar year.
+        data_tests: [not_null]
+      - name: events
+        description: Events starting in the year in the state's counties.
+      - name: customer_hours_lost
+        description: Capped customer-hours of those events (D4).
+      - name: customers
+        description: Sum of the county denominators (D13).
+      - name: outage_hours_per_1000_customers
+        description: customer_hours_lost per 1,000 customers, the ranking measure (D38).
+      - name: eaglei_counties
+        description: Counties EAGLE-I reports in the state (D22).
+      - name: total_counties
+        description: Counties in the state (D22).
+      - name: customer_coverage
+        description: EAGLE-I share of EIA-861 customers (D22).
+      - name: ranking_eligible
+        description: Coverage allows a rank (D22, D52).
+      - name: is_ranked
+        description: The row has a national rank.
+      - name: national_rank
+        description: Rank among ranked states in the year, 1 = most outage hours.
+      - name: region_rank
+        description: Rank within the Census region.
+      - name: footnote_reason
+        description: Why the row is not ranked (D22, D52, D60); NULL when ranked.
+
+  - name: fct_territory_reliability
+    description: >
+      Puerto Rico and the US Virgin Islands per year, same metrics as the states, never ranked
+      (D43). Puerto Rico's units are PREPA's seven operating regions (D22).
+    columns:
+      - name: territory_year_key
+        description: <state_abbr>-<year> (primary key).
+        data_tests: [unique, not_null]
+      - name: state_abbr
+        description: PR or VI.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['PR', 'VI']
+          - relationships:
+              arguments:
+                to: ref('dim_state')
+                field: state_abbr
+      - name: year
+        description: Calendar year.
+        data_tests: [not_null]
+      - name: events
+        description: Events starting in the year.
+      - name: customer_hours_lost
+        description: Capped customer-hours (D4).
+      - name: customers
+        description: Sum of the reporting units' denominators.
+      - name: outage_hours_per_1000_customers
+        description: customer_hours_lost per 1,000 customers.
+      - name: reporting_units
+        description: EAGLE-I reporting units in the territory.
+      - name: customer_coverage
+        description: EAGLE-I share of EIA-861 customers, where known.
+      - name: geography_note
+        description: What the reporting units are (D43, D44).
+
+  - name: fct_utility_reliability
+    description: >
+      EIA-861 SAIDI and SAIFI per utility, state and year, with and without major event days. IEEE
+      1366 reporters are ranked within size band and year, 1 = most reliable (D39); utilities on
+      another standard are in reporting_group 'other standard' and never ranked (D23). Reliability
+      rows with no reported standard are in neither group.
+    columns:
+      - name: utility_report_key
+        description: <data_year>-<utility_number>-<state_abbr> (primary key).
+        data_tests: [unique, not_null]
+      - name: data_year
+        description: EIA-861 data year.
+        data_tests: [not_null]
+      - name: utility_number
+        description: EIA utility number.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_utility')
+                field: utility_number
+      - name: state_abbr
+        description: >
+          State of the report. EIA-861 also covers American Samoa (AS), Guam (GU) and the Northern
+          Mariana Islands (MP), which EAGLE-I and dim_state do not; their 9 rows are kept here and
+          left out of the relationship test (D66).
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_state')
+                field: state_abbr
+              config:
+                where: "state_abbr NOT IN ('AS', 'GU', 'MP')"
+      - name: reporting_group
+        description: IEEE 1366 (ranked) or other standard (never ranked).
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['IEEE 1366', 'other standard']
+      - name: size_band
+        description: Customer size band the ranks are computed in (D32, D39).
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['small', 'medium', 'large', 'very_large', 'unknown']
+      - name: customers
+        description: Customers served in the state (EIA-861).
+      - name: saidi_with_med
+        description: SAIDI in minutes, major event days included.
+      - name: saidi_without_med
+        description: SAIDI in minutes, major event days excluded.
+      - name: saifi_with_med
+        description: SAIFI, interruptions per customer, major event days included.
+      - name: saifi_without_med
+        description: SAIFI, major event days excluded.
+      - name: data_quality_flag
+        description: Why an IEEE row is not ranked (D39 source-error rule).
+      - name: utilities_in_band
+        description: Ranked IEEE utilities in the band and year.
+      - name: is_ranked
+        description: The row has ranks.
+      - name: rank_saidi_without_med
+        description: Rank by SAIDI without major event days, 1 = most reliable.
+      - name: rank_saidi_with_med
+        description: Rank by SAIDI with major event days.
+      - name: rank_saifi_without_med
+        description: Rank by SAIFI without major event days.
+      - name: rank_saifi_with_med
+        description: Rank by SAIFI with major event days.
