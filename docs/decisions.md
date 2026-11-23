@@ -68,8 +68,9 @@ incrementally in D56). See `docs/data_profile.md`.
 | D59 | 2025 sources: EAGLE-I, NOAA, NWS, EIA-861 loaded; OE-417 2024-2025 missing | All | 2026-11-22 |
 | D60 | State-years with over 10% of customer-hours without a denominator are not ranked (CT 2025) | Gold | 2026-11-22 |
 | D61 | County reliability rows start at the county's first reported year (restatement of 2022-2023 ranks) | Gold | 2026-11-22 |
-| D62 | Empty 2025 readings: still dropped; they split the Puerto Rico blackout (open, Q10) | Silver / Gold | 2026-11-22 |
+| D62 | Empty 2025 readings: still dropped; they split the Puerto Rico blackout (Q10, resolved in D64) | Silver / Gold | 2026-11-22 |
 | D63 | 2025 is a complete year; no partial-year flag | Gold | 2026-11-22 |
+| D64 | Runs of empty readings up to 24 hours inside an outage are bridged like dropouts (resolves Q10) | Silver / Gold | 2026-11-22 |
 
 ---
 
@@ -2300,10 +2301,10 @@ deciding anything; **the rule is unchanged until I decide Q10.**
   (0.16% of 2025's 695.6 M), estimated as the lower of the two neighbouring readings.
 - **Long gaps inside outages:** 164 runs longer than 1 hour between above-threshold readings. These
   end the event and start a new one. Most of the missing hours are from one case: **the Puerto
-  Rico island-wide blackout of 2025-04-16.** In Ponce, Mayaguez, Arecibo, San Juan, Bayamon and
-  Caguas every reading from 2025-04-17 00:00 to 14:45 UTC (60 runs) is empty while 85,000 to
-  273,000 customers per county were out on both sides. Each county's blackout is split into two
-  events and about 10.8 M customer-hours are not counted. Rejoined, Ponce would be about 7.0 M
+  Rico island-wide blackout of 2025-04-16.** In six of PREPA's seven regions (filed under Ponce,
+  Mayagüez, Arecibo, San Juan, Bayamón and Caguas, D22) every reading from 2025-04-17 00:00 to 14:45
+  UTC (60 runs) is empty while 85,000 to 273,000 customers per region were out on both sides. Each
+  region's blackout is split into two events and about 10.8 M customer-hours are not counted. Rejoined, Ponce would be about 7.0 M
   customer-hours (now 3.07 M for the second half, 2025 rank 9) and the third-largest 2025 event.
   All other long gaps add up to about 1.8 M.
 - **Top events:** the 20 largest 2025 events contain 61 empty readings in 15,981 slots (0.4%); Los
@@ -2320,7 +2321,8 @@ gets `spans_feed_gap`-style hours instead of invented customers out. That fixes 
 split without inventing values for the 99.6% of empty readings in quiet periods. Filling them by
 interpolation is not recommended: the neighbouring readings are often a day apart (median 27 hours).
 
-**Rows affected:** none yet (finding only).
+**Rows affected:** none yet (finding only). **Resolved in D64** (2026-11-22): runs of empty readings
+are bridged like dropouts, without filling in values.
 
 ## D63. 2025 is a complete year; no partial-year flag
 
@@ -2333,6 +2335,71 @@ If a later year is loaded before December, I will add the flag then, with that y
 last reading.
 
 **Rows affected:** none.
+
+
+## D64. Runs of empty readings inside an outage are bridged like dropouts (resolves Q10)
+
+**What:**
+- **Silver:** `silver_empty_readings` keeps the EAGLE-I readings whose `customers_out` is empty
+  (fips_code, reading_time, year, source_file). They are placed and floored like `silver_outages`
+  (D7, D15, D16), one per county and slot, and never on a slot that also has a real reading. They
+  stay out of `silver_outages`, and no value is filled in.
+- **Gold events:** consecutive empty readings of a county form an empty run. It is **bridged** when
+  the readings in the collected runs right before and right after it both qualify (at or above the
+  county threshold, D18, and not dropout readings, D19) and it lasts no more than
+  `events.max_empty_bridge_hours` (24 hours, 96 runs). A bridged run is skipped like a D19 dropout:
+  it cannot end or split an event and adds no customer-hours. `bridged_empty_hours` records it.
+- A run between two qualifying readings but **longer than 24 hours still ends the event**. An event
+  whose first or last reading is next to one gets `spans_empty_gap = true`; its true length is unknown.
+- Empty runs and their edge readings are read from all of Silver, not only the reprocess window
+  (D57), so an event at the start of a window sees an empty run just before it. Config validation
+  requires `events.max_empty_bridge_hours` to be shorter than `incremental.lookback_days`.
+- The two columns are appended to `gold_outage_events`. The table already existed on Databricks, so
+  `scripts/schema_migrations.py` (`make migrate`, run by `make job-run` and `make pipeline`) adds them
+  with `ALTER TABLE ... ADD COLUMNS` and sets the existing rows to 0 and FALSE. Those are their true
+  values: the rows built before D64 were from 2022-2024, which have no empty readings, or were in
+  the reprocess window and were rebuilt by the same run. This is the only ALTER the runner allows,
+  and only the exact statements that file generates.
+
+**Why:** An empty reading is a collected run with no count (D62). Between two qualifying readings
+the outage was still going, so counting the run as zero (D3) ended the Puerto Rico blackout events
+after 15 hours. The 24-hour limit covers the 15-hour gap of 2025-04-17 and the 21-hour gap of
+2025-01-01 with room to spare. Beyond a day I cannot assume the same outage continued; the next one
+in Puerto Rico is 71 hours, so it still ends the event and is flagged.
+
+**Rows affected (DuckDB full data, incremental run; Databricks identical):**
+- `silver_empty_readings`: 1,972,650 rows, all in 2025; none on a slot with a real reading.
+- 928 events contain bridged runs (871 hours bridged in total). They absorb 1,052 earlier events,
+  so there are 124 fewer events: 2025 goes from 156,218 to 156,094 events.
+- Total customer-hours do not change, because nothing is filled in. 1,857,571 customer-hours move
+  from 2025 to 2024: three Puerto Rico events that start 2024-12-31 09:45 (the San Juan, Caguas and
+  Ponce regions, the New Year's Eve blackout) cross a 21-hour empty run on 2025-01-01 and now run to
+  2025-01-02 14:00. 2024: 1,689.5 M to 1,691.4 M; 2025: 695.6 M to 693.7 M.
+- 20 events have `spans_empty_gap` (8.6 M customer-hours).
+- **Puerto Rico blackout of 2025-04-16** (PREPA regions, D22), capped customer-hours before (two
+  events) and after (one event, 15 hours bridged):
+
+  | Region | Before | After | 2025 rank after |
+  |---|---|---|---|
+  | Ponce | 0.99 M + 3.07 M | 4.06 M | 5 |
+  | Mayagüez | 0.97 M + 2.19 M | 3.16 M | 10 |
+  | San Juan | 1.82 M + 0.80 M | 2.62 M | |
+  | Arecibo | 0.65 M + 1.80 M | 2.45 M | |
+  | Bayamón | 1.09 M + 1.21 M | 2.31 M | |
+  | Caguas | 1.57 M + 0.53 M | 2.10 M | |
+
+  Ponce, Bayamón and Caguas end next to the 71-hour empty run and have `spans_empty_gap`.
+- **2025 top 10:** Los Angeles 21.2 M, Allegheny 14.4 M, San Bernardino 6.8 M, Riverside 5.8 M,
+  **Ponce 4.06 M** (was ninth at 3.07 M), Cheboygan 3.7 M, Otsego 3.6 M, Ventura 3.5 M, St. Louis
+  city 3.3 M, **Mayagüez 3.16 M** (new). Cheboygan 26047-00141 (2.9 M) drops out. The all-years top
+  10 is unchanged.
+- **Unchanged:** every 2022 and 2023 row of every Gold and Silver table (per-year checksums on
+  Databricks before and after). In 2024 only the three Puerto Rico events, their storm-match rows and
+  the Puerto Rico territory rows change; 2024 county and state reliability are identical. No state
+  or county rank changes in any year (Puerto Rico is not ranked, D43). The incremental result equals
+  a full 2022-2025 rebuild in all 28 Silver, dimension and Gold tables (DuckDB).
+- Fixture: window W7 (Ponce and Harris, 2025-04-16 12:00 to 04-21 18:00) holds both runs: the
+  15-hour one is bridged and the 71-hour one ends the event and is flagged.
 
 ---
 
@@ -2354,5 +2421,4 @@ Q1 is resolved in D9; Q2 (fixed 100-customer threshold) is resolved in D18 and D
 
 **Q9.** Resolved in D52.
 
-**Q10.** Empty 2025 readings (D62): keep counting them as zeros (current rule), or treat runs of
-them as county feed gaps that cannot end or split an event (recommended)?
+**Q10.** Resolved in D64.

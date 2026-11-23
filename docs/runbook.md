@@ -58,8 +58,17 @@ event. The tables downstream of the events are small and are rebuilt in full.
 To add a year: download it, add its Bronze statement in `01_bronze.sql`, its branches in
 `02_silver.sql` and `02_silver_sources.sql` and its row count in `90_quality_checks.sql`, add it to
 `years` and set `load_years` to it, update `quality.expected_rows` after a DuckDB build, upload,
-deploy and run. The denominators stay on `denominator.base_years` (D58). For a full rebuild, list every year in `load_years` (or run
-`uv run python scripts/run_databricks.py --full`).
+deploy and run. The denominators stay on `denominator.base_years` (D58). For a full rebuild, list
+every year in `load_years` (or run `uv run python scripts/run_databricks.py --full`).
+
+## New columns on existing tables (D64)
+
+The incremental tables are created once, so a column added to their `CREATE TABLE IF NOT EXISTS`
+reaches a new deployment but not the table already in `workspace.outages`. Such columns are listed
+in `scripts/schema_migrations.py` with the value the existing rows get. `make migrate` (also run
+by `make job-run` and by `make pipeline`) adds whatever is missing with `ALTER TABLE ... ADD
+COLUMNS` and fills it; it does nothing when every column is there. It is the only ALTER the runner
+sends, and only for the exact statements that file generates.
 
 ## Deploy
 
@@ -84,8 +93,9 @@ uv run python scripts/databricks_cli.py bundle summary
 make job-run
 ```
 
-Starts the job, waits and prints each task's result and duration with the run's URL. The same
-run can be started from the Jobs UI with **Run now**. Afterwards I confirm the results with
+Adds any missing columns (`make migrate`), then starts the job, waits and prints each task's result
+and duration with the run's URL. The same run can be started from the Jobs UI with **Run now**.
+Afterwards I confirm the results with
 
 ```
 uv run python scripts/run_databricks.py --steps verify
