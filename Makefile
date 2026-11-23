@@ -7,7 +7,7 @@ DUCKDB_FILE ?=
 DUCKDB_ARG := $(if $(DUCKDB_FILE),--duckdb-file $(DUCKDB_FILE),)
 
 .PHONY: help setup download profile test test-slow lint ci fixture pipeline quality export all clean \
-        cli job-render job-validate job-deploy job-run
+        cli job-render job-validate job-deploy job-run migrate
 
 help:
 	@echo "make setup      install the uv environment and validate config/pipeline.yml"
@@ -24,7 +24,8 @@ help:
 	@echo "make cli        install the pinned Databricks CLI into .tools/ (no global install)"
 	@echo "make job-render render the job SQL into build/databricks/ from config/pipeline.yml"
 	@echo "make job-deploy render, validate and deploy the Databricks Job (databricks.yml)"
-	@echo "make job-run    run the deployed job once and wait for it (TASK=<key> re-runs one task)"
+	@echo "make migrate    add new columns to tables an earlier run created (D64)"
+	@echo "make job-run    migrate, then run the deployed job once and wait for it (TASK=<key> re-runs one task)"
 	@echo "make all        setup, download, test, pipeline, quality, export"
 	@echo "make clean      remove logs and Python caches (raw data is kept)"
 
@@ -86,7 +87,11 @@ job-validate: job-render
 job-deploy: job-validate
 	$(DBX) bundle deploy
 
-job-run:
+# Columns added to existing tables (D64) must be in place before the job writes them.
+migrate:
+	$(PY) scripts/run_databricks.py --steps migrate
+
+job-run: migrate
 	$(PY) scripts/job_run.py $(if $(TASK),--task $(TASK),)
 
 all: setup download test pipeline quality export

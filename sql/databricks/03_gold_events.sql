@@ -7,13 +7,14 @@
 --   gold_event_reprocess_window  per county, where this run rebuilds dropouts and events (D56, D57)
 --   gold_feed_dropouts           county-level reporting dropouts (D19)
 --   gold_outage_events_rebuilt   the events this run rebuilt (D56)
---   gold_outage_events           one row per county outage event (D3, D4, D10, D11, D13, D17-D19)
+--   gold_outage_events           one row per county outage event (D3, D4, D10, D11, D13, D17-D19, D64)
 --
 -- Event rule: a reading belongs to an event when customers_out >= the county's threshold,
 -- GREATEST(${events.min_customers_out}, share x customers) (D18). A gap of more than ${events.max_gap_hours} hour(s) since the county's
 -- previous qualifying reading starts a new event. The gap is measured in collected runs,
--- excluding nationwide feed gaps (D3) and the county's own feed dropouts (D19), so
--- neither can split an event.
+-- excluding nationwide feed gaps (D3), the county's own feed dropouts (D19) and runs of empty
+-- readings of up to ${events.max_empty_bridge_hours} hours between two qualifying readings (D64), so none of
+-- them can split an event.
 --
 -- Incremental (D56): gold_feed_dropouts and gold_outage_events are created once and then
 -- rewritten as the rows before the reprocess window (kept unchanged) plus the rows rebuilt from
@@ -144,7 +145,10 @@ CREATE TABLE IF NOT EXISTS gold_outage_events (
     ranking_eligible        BOOLEAN        COMMENT 'Denominator of at least ${ranking.min_customers_label} customers (D11)',
     peak_out_per_1000       DECIMAL(38, 13) COMMENT 'Capped peak per 1,000 customers',
     customer_hours_per_1000 DOUBLE         COMMENT 'Customer-hours per 1,000 customers',
-    event_year              INT            COMMENT 'Calendar year of event_start, UTC'
+    event_year              INT            COMMENT 'Calendar year of event_start, UTC',
+    -- Added by D64 after the table first existed; scripts/schema_migrations.py adds them to it.
+    bridged_empty_hours     DECIMAL(23, 2) COMMENT 'Hours of empty readings bridged inside the event (D64)',
+    spans_empty_gap         BOOLEAN        COMMENT 'Starts or ends at an empty run too long to bridge (D64)'
 )
 COMMENT 'County outage events: readings at or above the county threshold, a gap over ${events.max_gap_hours} hour(s) of active runs starts a new event';
 
@@ -377,35 +381,114 @@ qualifying AS (
           WHERE d.fips_code = s.fips_code AND d.run_index = r.run_index
       )
 ),
--- Qualifying readings and dropout runs in one ordered list per county, so the number of
--- dropout runs before each reading can be counted.
-run_keys AS (
-    SELECT fips_code, run_index, 0 AS is_dropout FROM qualifying
-    UNION ALL
-    SELECT fips_code, run_index, 1 AS is_dropout FROM dropout_runs
+-- Empty readings (D64) on the collected-run grid. All of them, not only the window's: an event at
+-- the start of a window can begin right after an empty run that lies before the window.
+empty_slots AS (
+    SELECT e.fips_code, r.run_index
+    FROM silver_empty_readings AS e
+    INNER JOIN gold_collection_runs AS r ON r.slot_time = e.reading_time
+    WHERE r.is_collected
 ),
--- active_index = run_index minus the county's dropout runs so far. Distances in active runs
--- skip both nationwide feed gaps (not in run_index) and county dropouts (D3, D19).
+-- Consecutive empty runs of a county share run_index - ROW_NUMBER (gaps and islands).
+empty_islands AS (
+    SELECT
+        fips_code,
+        run_index,
+        run_index - ROW_NUMBER() OVER (PARTITION BY fips_code ORDER BY run_index) AS island
+    FROM empty_slots
+),
+-- One row per run of empty readings.
+empty_blocks AS (
+    SELECT fips_code, MIN(run_index) AS first_run, MAX(run_index) AS last_run, COUNT(*) AS empty_runs
+    FROM empty_islands
+    GROUP BY fips_code, island
+),
+-- The collected runs right before and right after each empty run.
+empty_edges AS (
+    SELECT b.fips_code, b.first_run - 1 AS run_index FROM empty_blocks AS b
+    UNION DISTINCT
+    SELECT b.fips_code, b.last_run + 1 AS run_index FROM empty_blocks AS b
+),
+-- The readings at those edges that qualify: at or above the county's threshold (D18) and not a
+-- feed dropout reading (D19). Read from all of Silver, for the same reason as empty_slots.
+edge_qualifying AS (
+    SELECT g.fips_code, g.run_index
+    FROM empty_edges AS g
+    INNER JOIN gold_collection_runs AS r ON r.run_index = g.run_index
+    INNER JOIN silver_outages AS s
+        ON  s.fips_code    = g.fips_code
+        AND s.reading_time = r.slot_time
+    LEFT JOIN  gold_event_thresholds AS t ON t.fips_code = g.fips_code
+    WHERE s.customers_out >= COALESCE(t.event_threshold, ${events.min_customers_out})
+      AND NOT EXISTS (
+          SELECT 1 FROM gold_feed_dropouts AS d
+          WHERE d.fips_code = g.fips_code
+            AND g.run_index >= d.drop_start_run
+            AND g.run_index < d.recovery_run
+      )
+),
+-- An empty run between two qualifying readings is an outage the feed did not count. Up to
+-- events.max_empty_bridge_hours it is bridged; a longer one still ends the event (D64).
+empty_gaps AS (
+    SELECT
+        b.fips_code,
+        b.first_run,
+        b.last_run,
+        b.empty_runs <= ${events.max_empty_bridge_runs} AS is_bridged
+    FROM empty_blocks AS b
+    INNER JOIN edge_qualifying AS q1 ON q1.fips_code = b.fips_code AND q1.run_index = b.first_run - 1
+    INNER JOIN edge_qualifying AS q2 ON q2.fips_code = b.fips_code AND q2.run_index = b.last_run + 1
+),
+-- One row per bridged empty run.
+bridged_runs_all AS (
+    SELECT g.fips_code, EXPLODE(SEQUENCE(g.first_run, g.last_run)) AS run_index
+    FROM empty_gaps AS g
+    WHERE g.is_bridged
+),
+-- Bridged empty runs inside the county's window are skipped like dropout runs.
+bridged_runs AS (
+    SELECT x.fips_code, x.run_index
+    FROM bridged_runs_all AS x
+    INNER JOIN gold_collection_runs AS r ON r.run_index = x.run_index
+    INNER JOIN gold_event_reprocess_window AS w ON w.fips_code = x.fips_code
+    WHERE r.slot_time >= w.reprocess_from
+),
+-- Qualifying readings, dropout runs and bridged empty runs in one ordered list per county, so
+-- the skipped runs before each reading can be counted.
+run_keys AS (
+    SELECT fips_code, run_index, 0 AS is_dropout, 0 AS is_empty FROM qualifying
+    UNION ALL
+    SELECT fips_code, run_index, 1 AS is_dropout, 0 AS is_empty FROM dropout_runs
+    UNION ALL
+    SELECT fips_code, run_index, 0 AS is_dropout, 1 AS is_empty FROM bridged_runs
+),
+-- active_index = run_index minus the county's skipped runs so far. Distances in active runs
+-- skip nationwide feed gaps (not in run_index), county dropouts and bridged empty runs (D3, D19,
+-- D64). empty_index counts the bridged empty runs alone, for bridged_empty_hours.
 active_positions AS (
     SELECT
         fips_code,
         run_index,
         is_dropout,
-        run_index - SUM(is_dropout) OVER (
-            PARTITION BY fips_code
-            ORDER BY run_index, is_dropout
-            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-        ) AS active_index
+        is_empty,
+        run_index - SUM(is_dropout + is_empty) OVER w AS active_index,
+        SUM(is_empty) OVER w                         AS empty_index
     FROM run_keys
+    WINDOW w AS (
+        PARTITION BY fips_code
+        ORDER BY run_index, is_dropout + is_empty
+        ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    )
 ),
 -- Attach the active position to each qualifying reading.
 positioned AS (
-    SELECT q.*, a.active_index
+    SELECT q.*, a.active_index, a.empty_index
     FROM qualifying AS q
     INNER JOIN active_positions AS a
         ON  a.fips_code  = q.fips_code
         AND a.run_index  = q.run_index
         AND a.is_dropout = 0
+        AND a.is_empty   = 0
 ),
 -- LAG finds the county's previous qualifying reading; the distance is in active runs.
 with_previous AS (
@@ -469,8 +552,14 @@ events AS (
         MAX(customers)                                   AS customers,
         MAX(denominator_source)                          AS denominator_source,
         MAX(event_threshold)                             AS event_threshold,
-        -- Collected runs minus active runs between the first and last reading = dropout runs inside.
-        (MAX(run_index) - MIN(run_index)) - (MAX(active_index) - MIN(active_index)) AS dropout_slots
+        MIN(run_index)                                   AS first_run,
+        MAX(run_index)                                   AS last_run,
+        -- Bridged empty runs inside the event (D64).
+        MAX(empty_index) - MIN(empty_index)              AS empty_slots,
+        -- Collected runs minus active runs between the first and last reading = skipped runs
+        -- inside; those that are not bridged empty runs are dropout runs.
+        (MAX(run_index) - MIN(run_index)) - (MAX(active_index) - MIN(active_index))
+            - (MAX(empty_index) - MIN(empty_index))      AS dropout_slots
     FROM capped
     GROUP BY fips_code, event_seq
 ),
@@ -491,6 +580,20 @@ gap_overlap AS (
     LEFT JOIN feed_gaps AS g
         ON  g.slot_time > e.event_start
         AND g.slot_time < e.last_reading_time
+    GROUP BY e.fips_code, e.event_seq
+),
+-- An event that starts right after or ends right before an empty run too long to bridge may
+-- really be longer: the feed did not report how the outage went on (D64).
+long_empty AS (
+    SELECT
+        e.fips_code,
+        e.event_seq,
+        COUNT(g.fips_code) AS long_gaps
+    FROM events AS e
+    LEFT JOIN empty_gaps AS g
+        ON  g.fips_code = e.fips_code
+        AND NOT g.is_bridged
+        AND (g.first_run = e.last_run + 1 OR g.last_run = e.first_run - 1)
     GROUP BY e.fips_code, e.event_seq
 )
 -- event_end is the end of the last qualifying run, so a single reading lasts 0.25 hours (D17).
@@ -523,11 +626,16 @@ SELECT
     COALESCE(e.customers >= ${ranking.min_customers}, FALSE)                                  AS ranking_eligible,
     CAST(e.peak_customers_out_capped * 1000.0 / NULLIF(e.customers, 0) AS DECIMAL(38, 13)) AS peak_out_per_1000,
     e.customer_hours_lost * 1000.0 / NULLIF(e.customers, 0)               AS customer_hours_per_1000,
-    YEAR(e.event_start)                                                   AS event_year
+    YEAR(e.event_start)                                                   AS event_year,
+    CAST(e.empty_slots * 0.25 AS DECIMAL(23, 2))                          AS bridged_empty_hours,
+    x.long_gaps > 0                                                       AS spans_empty_gap
 FROM events AS e
 INNER JOIN gap_overlap AS o
     ON  o.fips_code = e.fips_code
-    AND o.event_seq = e.event_seq;
+    AND o.event_seq = e.event_seq
+INNER JOIN long_empty AS x
+    ON  x.fips_code = e.fips_code
+    AND x.event_seq = e.event_seq;
 
 -- Kept events (before their county's window) plus the rebuilt ones. Delta reads the table's
 -- current version while it writes the new one, so a failed run leaves the previous events.
@@ -561,9 +669,10 @@ FROM gold_feed_dropouts
 GROUP BY dropout_year
 ORDER BY dropout_year;
 
--- Events per year, and how many span a feed gap (D10) or a dropout (D19)
+-- Events per year, and how many span a feed gap (D10), a dropout (D19) or empty readings (D64)
 SELECT event_year, COUNT(*) AS events, COUNT_IF(spans_feed_gap) AS spans_feed_gap,
-       COUNT_IF(spans_dropout) AS spans_dropout
+       COUNT_IF(spans_dropout) AS spans_dropout, COUNT_IF(bridged_empty_hours > 0) AS bridged_empty,
+       COUNT_IF(spans_empty_gap) AS spans_empty_gap
 FROM gold_outage_events
 GROUP BY event_year
 ORDER BY event_year;

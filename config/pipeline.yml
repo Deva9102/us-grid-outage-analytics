@@ -39,6 +39,8 @@ events:
   threshold_share: 0.0025       # D18: event threshold = GREATEST(min_customers_out, share x customers)
   min_customers_out: 100        # D17, D18: threshold floor (customers out)
   max_gap_hours: 1              # D17: a gap longer than this starts a new event (multiple of 0.25)
+  max_empty_bridge_hours: 24    # D64: a run of empty readings up to this long, between two qualifying
+                                # readings, cannot end an event (multiple of 0.25)
   large_outage_customers: 10000 # D18: an outage of this many customers must always qualify,
                                 # so every county threshold must stay below it (quality gate)
 
@@ -140,13 +142,14 @@ quality:                        # sql/databricks/90_quality_checks.sql (D48)
     silver_oe417: 738
     dim_county_customers: 3079
     silver_outages: 108108220
+    silver_empty_readings: 1972650
     gold_collection_runs: 140256
     gold_event_thresholds: 3079
     gold_event_reprocess_window: 3079
     gold_feed_dropouts: 24059
-    gold_outage_events: 602479
+    gold_outage_events: 602355
     gold_state_coverage: 53
-    gold_event_storm_match: 602479
+    gold_event_storm_match: 602355
     gold_unit_reliability: 12257
     gold_county_reliability: 12217
     gold_territory_unit_reliability: 40

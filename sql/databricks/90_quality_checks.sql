@@ -77,6 +77,7 @@ counts AS (
     UNION ALL SELECT 'silver_oe417', COUNT(*), ${quality.expected_rows.silver_oe417} FROM silver_oe417
     UNION ALL SELECT 'dim_county_customers', COUNT(*), ${quality.expected_rows.dim_county_customers} FROM dim_county_customers
     UNION ALL SELECT 'silver_outages', COUNT(*), ${quality.expected_rows.silver_outages} FROM silver_outages
+    UNION ALL SELECT 'silver_empty_readings', COUNT(*), ${quality.expected_rows.silver_empty_readings} FROM silver_empty_readings
 )
 SELECT
     'silver'                                                              AS layer,
@@ -100,6 +101,17 @@ storm_dupes AS (
         SELECT event_id, fips_code FROM silver_storm_events GROUP BY event_id, fips_code HAVING COUNT(*) > 1
     ) AS d
 ),
+-- An empty reading is one per county and slot, and never where the slot has a real reading (D64).
+empty_dupes AS (
+    SELECT COUNT(*) AS n FROM (
+        SELECT fips_code, reading_time FROM silver_empty_readings GROUP BY fips_code, reading_time HAVING COUNT(*) > 1
+    ) AS d
+),
+empty_with_reading AS (
+    SELECT COUNT(*) AS n
+    FROM silver_empty_readings AS e
+    INNER JOIN silver_outages AS s ON s.fips_code = e.fips_code AND s.reading_time = e.reading_time
+),
 -- EIA-861 reliability is reported per utility, state and year (D32).
 utility_dupes AS (
     SELECT COUNT(*) AS n FROM (
@@ -113,6 +125,10 @@ checks AS (
     SELECT 'silver_outages: NULL in fips_code, reading_time, year or state',
            CAST(COUNT_IF(fips_code IS NULL OR reading_time IS NULL OR year IS NULL OR state IS NULL) AS DOUBLE)
     FROM silver_outages
+    UNION ALL
+    SELECT 'silver_empty_readings: duplicate (fips_code, reading_time) (D64)', CAST(n AS DOUBLE) FROM empty_dupes
+    UNION ALL
+    SELECT 'silver_empty_readings: slot also has a reading in silver_outages (D64)', CAST(n AS DOUBLE) FROM empty_with_reading
     UNION ALL
     SELECT 'dim_county_customers: duplicate or NULL fips_code',
            CAST(COUNT(*) - COUNT(DISTINCT fips_code) + COUNT_IF(fips_code IS NULL) AS DOUBLE)
@@ -336,6 +352,10 @@ checks AS (
     UNION ALL
     SELECT 'gold_outage_events: peak below the event threshold (D18)',
            CAST(COUNT_IF(peak_customers_out < event_threshold) AS DOUBLE)
+    FROM gold_outage_events
+    UNION ALL
+    SELECT 'gold_outage_events: bridged_empty_hours or spans_empty_gap NULL or negative (D64)',
+           CAST(COUNT_IF(bridged_empty_hours IS NULL OR bridged_empty_hours < 0 OR spans_empty_gap IS NULL) AS DOUBLE)
     FROM gold_outage_events
     UNION ALL
     SELECT 'gold_outage_events: event_year outside config years', CAST(COUNT_IF(event_year NOT IN (${years.sql})) AS DOUBLE)

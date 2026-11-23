@@ -48,6 +48,9 @@ def build_gold(con, share: float | None = None, skip: tuple[str, ...] = ()) -> N
     # an earlier build with another share must not stay behind.
     for table in ("gold_outage_events", "gold_feed_dropouts"):
         con.execute(f"DROP TABLE IF EXISTS {table}")
+    # Silver built here has no empty readings (D64); the events SQL still reads the table.
+    con.execute("CREATE TABLE IF NOT EXISTS silver_empty_readings "
+                "(fips_code VARCHAR, reading_time TIMESTAMP, year INT, source_file VARCHAR)")
     statements = [s for s in duckdb_pipeline.file_statements(GOLD_SQL.name, overrides)
                   if not ((m := CREATED.match(strip_comments(s))) and m.group(1) in skip)]
     duckdb_pipeline.run_statements(con, statements, REPO_ROOT / "data" / "raw", GOLD_SQL.name)

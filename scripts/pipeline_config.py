@@ -91,6 +91,12 @@ def validate(cfg: dict) -> None:
     gap = number("events.max_gap_hours", 0, lo_open=True)
     if (gap * 60) % RUN_MINUTES:
         raise ConfigError(f"events.max_gap_hours must be a multiple of {RUN_MINUTES} minutes")
+    bridge = number("events.max_empty_bridge_hours", 0)
+    if (bridge * 60) % RUN_MINUTES:
+        raise ConfigError(f"events.max_empty_bridge_hours must be a multiple of {RUN_MINUTES} minutes")
+    if bridge >= lookback * 24:
+        # An event can reach back across a bridged run; the reprocess window must cover it (D57, D64).
+        raise ConfigError("events.max_empty_bridge_hours must be shorter than incremental.lookback_days")
     number("events.large_outage_customers", _require(cfg, "events.min_customers_out"), lo_open=True)
     number("dropouts.drop_below_share", 0, 1, lo_open=True)
     number("dropouts.recovery_share", 0, 1, lo_open=True)
@@ -140,6 +146,7 @@ def derive(cfg: dict) -> dict:
     inc = cfg["incremental"]
     inc["full_rebuild"] = inc["load_years"] == years
     e["max_gap_runs"] = int(e["max_gap_hours"] * 60 // RUN_MINUTES)
+    e["max_empty_bridge_runs"] = int(e["max_empty_bridge_hours"] * 60 // RUN_MINUTES)
     d["drop_below_pct"] = _pct(d["drop_below_share"])
     d["recovery_pct"] = _pct(d["recovery_share"])
     d["recovery_max_minutes"] = d["recovery_max_runs"] * RUN_MINUTES

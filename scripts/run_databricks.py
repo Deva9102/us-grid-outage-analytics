@@ -4,6 +4,8 @@ Steps (run all, or pick with --steps):
     check    connect to the SQL warehouse and confirm the session time zone is UTC (D1)
     convert  EAGLE-I yearly CSVs -> Parquet with DuckDB, every column as STRING (D14, D20),
              into data/raw/eaglei_parquet/<year>/
+    migrate  add the columns listed in scripts/schema_migrations.py to tables an earlier run created
+             (D64), and fill them for the rows already there
     upload   Parquet files, EAGLE-I metadata files and data/reference/state_regions.csv to
              /Volumes/workspace/outages/raw/ with the Databricks SDK, keeping the folder structure
     sql      sql/databricks/01_bronze.sql, 02_silver.sql, 03_gold_events.sql, statement by statement
@@ -22,8 +24,8 @@ The token is never printed.
 
 Safety: statements run with catalog workspace and schema outages. A statement is refused before
 it is sent if it contains DROP, ALTER, TRUNCATE, DELETE, GRANT or REVOKE, or a three-part name
-outside workspace.outages. The one exception is the retention statement of the quality results
-table (D55). Any failure or count mismatch stops the run.
+outside workspace.outages. The exceptions are the retention statement of the quality results
+table (D55) and the ALTER TABLE ... ADD COLUMNS statements of the migrate step (D64). Any failure or count mismatch stops the run.
 
 The Statement Execution API runs each statement in its own session, so USE and SET statements in
 the .sql files are skipped: catalog and schema are passed with every statement, and the check step
@@ -57,6 +59,7 @@ from databricks.sdk.service.sql import (
 from dotenv import load_dotenv
 
 import pipeline_config
+import schema_migrations
 from pipeline_log import RunLog
 from sql_split import split_statements, strip_comments, without_literals
 
@@ -91,7 +94,7 @@ EXPECTED_TOP10 = [
 ]
 EXPECTED_DETAIL = {
     "feed gaps per year (D3)": [("2022", "3"), ("2023", "16"), ("2024", "41"), ("2025", "12")],
-    "events per year": [("2022", "149695"), ("2023", "144747"), ("2024", "151819"), ("2025", "156218")],
+    "events per year": [("2022", "149695"), ("2023", "144747"), ("2024", "151819"), ("2025", "156094")],
     "dropouts per year (D19)": [("2022", "6793"), ("2023", "5782"), ("2024", "6615"), ("2025", "4869")],
     "exceeds_customers rows per year (D4, D21, D35, D36)": [("2022", "1841"), ("2023", "365"), ("2024", "8437"),
                                                             ("2025", "3415")],
@@ -107,7 +110,12 @@ EXPECTED_DETAIL = {
     "OE-417 incidents per year (D33)": [("2022", "390"), ("2023", "348")],
     "states below 70% coverage (D22)": [("0",)],
     "storm-matched events per year (D37, D42)": [("2022", "17823"), ("2023", "19332"), ("2024", "18449"),
-                                                 ("2025", "17742")],
+                                                 ("2025", "17724")],
+    # D64: 928 events bridge 871 hours of empty readings; 20 touch a longer empty run.
+    "events with bridged empty readings (D64)": [("928", "871", "20")],
+    "Puerto Rico blackout of 2025-04-16 (D64)": [("72013-01668", "2454656", "15.00"), ("72021-01755", "2307430", "15.00"),
+                                                 ("72025-01779", "2099312", "15.00"), ("72097-01588", "3157675", "15.00"),
+                                                 ("72113-01541", "4060494", "15.00"), ("72127-01830", "2621865", "15.00")],
     "rank 1 state per year (D38, D43)": [("2022", "ME"), ("2023", "ME"), ("2024", "SC"), ("2025", "WV")],
     # D61: a county is in the reliability tables from its first reported year only.
     "ranked counties per year (D38, D44, D45)": [("2022", "3004"), ("2023", "3006"), ("2024", "3006"),
@@ -151,6 +159,13 @@ DETAIL_SQL = {
     "storm-matched events per year (D37, D42)":
         "SELECT CAST(event_year AS STRING), CAST(COUNT_IF(storm_type <> 'unmatched') AS STRING) "
         "FROM gold_event_storm_match GROUP BY 1 ORDER BY 1",
+    "events with bridged empty readings (D64)":
+        "SELECT CAST(COUNT_IF(bridged_empty_hours > 0) AS STRING), CAST(CAST(SUM(bridged_empty_hours) AS INT) AS STRING), "
+        "CAST(COUNT_IF(spans_empty_gap) AS STRING) FROM gold_outage_events",
+    "Puerto Rico blackout of 2025-04-16 (D64)":
+        "SELECT event_id, CAST(CAST(ROUND(customer_hours_lost) AS BIGINT) AS STRING), CAST(bridged_empty_hours AS STRING) "
+        "FROM gold_outage_events WHERE fips_code IN ('72013', '72021', '72025', '72097', '72113', '72127') "
+        "AND event_start < TIMESTAMP '2025-04-17 00:00:00' AND event_end > TIMESTAMP '2025-04-17 00:00:00' ORDER BY 1",
     "rank 1 state per year (D38, D43)":
         "SELECT CAST(year AS STRING), state_abbr FROM gold_state_reliability WHERE national_rank = 1 ORDER BY 1",
     "ranked counties per year (D38, D44, D45)":
@@ -172,6 +187,8 @@ FORBIDDEN = re.compile(r"\b(DROP|ALTER|TRUNCATE|DELETE|GRANT|REVOKE)\b", re.I)
 # The only DELETE allowed: quality results older than the retention period (D55).
 RETENTION = re.compile(rf"^\s*DELETE\s+FROM\s+{CFG['quality']['results_table']}\s+WHERE\s+run_ts\s*<\s*"
                        r"CURRENT_TIMESTAMP(?:\(\))?\s*-\s*INTERVAL\s+\d+\s+DAYS\s*$", re.I)
+# The only ALTER allowed: adding columns listed in scripts/schema_migrations.py (D64).
+MIGRATION = re.compile(r"^\s*ALTER\s+TABLE\s+(\w+)\s+ADD\s+COLUMNS\s*\(\s*(\w+)\s", re.I)
 THREE_PART = re.compile(r"\b([A-Za-z_]\w*)\.([A-Za-z_]\w*)\.([A-Za-z_]\w*)\b")
 SKIPPED = re.compile(r"^\s*(USE|SET)\b", re.I)
 
@@ -204,9 +221,19 @@ def connect() -> tuple[WorkspaceClient, str]:
     return w, warehouse_id
 
 
+def allowed_migration(stmt: str) -> bool:
+    """True for exactly an ADD COLUMNS statement that schema_migrations.py generates."""
+    m = MIGRATION.match(strip_comments(stmt))
+    if not m:
+        return False
+    listed = schema_migrations.statements(
+        [c for c in schema_migrations.ADDED_COLUMNS if (c.table, c.column) == (m.group(1), m.group(2))], "databricks")
+    return strip_comments(stmt).strip() in listed
+
+
 def check_safe(stmt: str) -> None:
     code = without_literals(stmt)
-    if FORBIDDEN.search(code) and not RETENTION.match(strip_comments(stmt)):
+    if FORBIDDEN.search(code) and not RETENTION.match(strip_comments(stmt)) and not allowed_migration(stmt):
         raise Stop(f"Refused (forbidden keyword {FORBIDDEN.search(code).group(1)}):\n{summary(stmt)}")
     for cat, sch, _ in THREE_PART.findall(code):
         if (cat.lower(), sch.lower()) != (CATALOG, SCHEMA):
@@ -418,6 +445,21 @@ def step_sql(w: WorkspaceClient, warehouse_id: str, log: RunLog) -> None:
                     raise Stop(f"Quality gate after {layer} failed; later layers were not built.\n{e}") from e
 
 
+def step_migrate(w: WorkspaceClient, warehouse_id: str) -> int:
+    """Add the columns of schema_migrations.py that existing tables lack (D64); returns how many."""
+    tables = {r[1] for r in run_sql(w, warehouse_id, f"SHOW TABLES IN {CATALOG}.{SCHEMA}")}
+    existing = {}
+    for table in sorted({c.table for c in schema_migrations.ADDED_COLUMNS} & tables):
+        existing[table] = {r[0].lower() for r in run_sql(w, warehouse_id, f"SHOW COLUMNS IN {table}")}
+    todo = schema_migrations.missing(existing)
+    for stmt in schema_migrations.statements(todo, "databricks"):
+        started = time.time()
+        run_sql(w, warehouse_id, stmt)
+        print(f"  ok {time.time() - started:6.1f}s  {summary(stmt)}")
+    print(f"  {len(todo)} column(s) added" if todo else "  every table has its columns")
+    return len(todo)
+
+
 def step_quality(w: WorkspaceClient, warehouse_id: str, log: RunLog) -> int:
     import quality_checks
 
@@ -477,7 +519,7 @@ def step_verify(w: WorkspaceClient, warehouse_id: str) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--steps", default="check,convert,upload,sql,verify")
+    parser.add_argument("--steps", default="check,convert,upload,migrate,sql,verify")
     parser.add_argument("--full", action="store_true", help="rebuild every year, not only incremental.load_years")
     args = parser.parse_args()
     if args.full:
@@ -502,6 +544,8 @@ def main() -> int:
                     s.rows = step_convert()
                 elif step == "upload":
                     s.rows = step_upload(w, warehouse_id)
+                elif step == "migrate":
+                    s.rows = step_migrate(w, warehouse_id)
                 elif step == "verify":
                     s.rows = step_verify(w, warehouse_id)
                 elif step == "quality":

@@ -12,6 +12,9 @@ pipeline's rules can be checked with exact expected values:
                                                  Kauai peak that sets its D35 floor
                 W6 2024-12-31 12:00-2025-01-02 00:00  Monongalia WV and Harris only: an outage
                                                  running from Dec 31 into Jan 1, one event (D57)
+                W7 2025-04-16 12:00-04-21 18:00  Ponce PR and Harris only: the Puerto Rico blackout,
+                                                 a 15-hour run of empty readings (bridged) and a
+                                                 71-hour one (too long to bridge) (D64)
               Kalawao HI: its first 2024 reading, so Hawaii's D21 state total is complete.
               Norton city VA: one reading; it has no denominator (D9).
     MCC       the 15 counties and the Grand Total row (D5)
@@ -62,6 +65,11 @@ KALAWAO, NORTON = "15005", "51720"
 # the fixture's collection grid matches the full data); the other counties stay out of it.
 BOUNDARY_WINDOW = ("2024-12-31 12:00", "2025-01-02 00:00")
 BOUNDARY_COUNTIES = ["54061", "48201"]
+# W7: the Puerto Rico blackout of 2025-04-16 (D64). Ponce and Harris, as in W6.
+BLACKOUT_WINDOW = ("2025-04-16 12:00", "2025-04-21 18:00")
+BLACKOUT_COUNTIES = ["72113", "48201"]
+# Windows of their own, each for a few counties only: (counties, window).
+EXTRA_WINDOWS = [(BOUNDARY_COUNTIES, BOUNDARY_WINDOW), (BLACKOUT_COUNTIES, BLACKOUT_WINDOW)]
 WATER_EVENT_TYPES = ("Marine Thunderstorm Wind", "Marine Strong Wind", "Marine High Wind", "Waterspout")
 SALES_STATES_2024 = ("HI", "UT", "MA", "TX", "CA", "VA")
 RELIABILITY_2024 = ("HI", "UT", "MA")
@@ -78,9 +86,9 @@ def window_sql(col: str, windows=None) -> str:
 
 
 def selection_sql(fips_col: str, time_col: str) -> str:
-    """Rows of the fixture counties in windows W1-W5, or of the boundary counties in W6."""
-    return (f"(({fips_col} IN ({sql_list(COUNTIES)}) AND ({window_sql(time_col)}))"
-            f" OR ({fips_col} IN ({sql_list(BOUNDARY_COUNTIES)}) AND ({window_sql(time_col, [BOUNDARY_WINDOW])})))")
+    """Rows of the fixture counties in windows W1-W5, or of the few counties of W6 and W7."""
+    extra = "".join(f" OR ({fips_col} IN ({sql_list(c)}) AND ({window_sql(time_col, [w])}))" for c, w in EXTRA_WINDOWS)
+    return f"(({fips_col} IN ({sql_list(COUNTIES)}) AND ({window_sql(time_col)})){extra})"
 
 
 def copy_csv(con, query: str, path: Path) -> int:
@@ -111,7 +119,7 @@ def eaglei(con) -> None:
         n = copy_csv(con, query, OUT / "eaglei" / str(year) / f"eaglei_outages_{year}.csv")
         print(f"  eaglei {year}: {n} rows ({measure[year]})")
     mcc = (RAW / "eaglei" / "metadata" / "MCC.csv").as_posix()
-    keys = sql_list([c.lstrip("0") for c in sorted(set(COUNTIES) | set(BOUNDARY_COUNTIES))])
+    keys = sql_list([c.lstrip("0") for c in sorted(set(COUNTIES).union(*(c for c, _ in EXTRA_WINDOWS)))])
     n = copy_csv(con, f"""
         SELECT * FROM read_csv('{mcc}', all_varchar = true)
         WHERE County_FIPS IN ({keys}) OR County_FIPS = 'Grand Total'
@@ -133,7 +141,7 @@ def noaa_and_zones(con) -> None:
         CREATE OR REPLACE TABLE fixture_storms AS
         SELECT DISTINCT s.event_id FROM silver_storm_events s
         WHERE (s.fips_code IN ({sql_list(COUNTIES)}) AND ({overlaps(WINDOWS)}))
-           OR (s.fips_code IN ({sql_list(BOUNDARY_COUNTIES)}) AND ({overlaps([BOUNDARY_WINDOW])}))
+           {"".join(f" OR (s.fips_code IN ({sql_list(c)}) AND ({overlaps([w])}))" for c, w in EXTRA_WINDOWS)}
         UNION
         SELECT MIN(event_id) FROM silver_storm_event_details
         WHERE area_type = 'water' AND event_type IN ({sql_list(WATER_EVENT_TYPES)})

@@ -38,6 +38,7 @@ from pathlib import Path
 import duckdb
 
 import pipeline_config
+import schema_migrations
 import sql_dialect
 from run_databricks import CREATED, SQL_FILES, for_this_run, full_rebuild_overrides
 from sql_split import split_statements, strip_comments
@@ -194,6 +195,7 @@ def run_all(con, root: Path, overrides: dict | None = None, incremental: bool = 
     A full rebuild of every year unless incremental is True or overrides set the load years.
     """
     overrides = with_load_years(overrides, incremental)
+    schema_migrations.run_duckdb(con)  # columns added to tables an earlier run created (D64)
     created: list[str] = []
     for name in SQL_FILES:
         created += run_file(con, name, root, overrides)

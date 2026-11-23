@@ -1,14 +1,16 @@
 -- =============================================================================
 -- 02_silver.sql
--- Silver layer: one denominator table and one unified outage table.
+-- Silver layer: one denominator table, one unified outage table and the empty readings.
 --
 --   dim_county_customers  one customer denominator per county for all years (D13, D21, D35, D58)
 --   silver_outages        all EAGLE-I years, cleaned, partitioned by year and state
+--   silver_empty_readings readings with an empty customers_out, kept out of silver_outages (D64)
 --
 -- Incremental (D56): silver_outages is created once and only the partitions of
--- incremental.load_years are replaced (INSERT INTO ... REPLACE WHERE year IN (...)); every other
--- year is left as it is. dim_county_customers is rebuilt every run but depends only on the
--- denominator base years 2022-2024 (D58), so its existing rows never change.
+-- incremental.load_years are replaced (INSERT INTO ... REPLACE WHERE year IN (...)), and the same
+-- for silver_empty_readings; every other year is left as it is. dim_county_customers is rebuilt
+-- every run but depends only on the denominator base years 2022-2024 (D58), so its existing rows
+-- never change.
 --
 -- Rule numbers refer to docs/decisions.md. The same logic is tested locally in
 -- scripts/test_silver_duckdb.py; keep the two in step.
@@ -343,6 +345,75 @@ FROM deduped AS d
 INNER JOIN bronze_state_regions AS r ON r.state_fips = LEFT(d.fips_code, 2)
 LEFT JOIN  dim_county_customers AS k ON k.fips_code  = d.fips_code
 WHERE YEAR(d.reading_time) IN (${incremental.load_years});
+
+
+-- -----------------------------------------------------------------------------
+-- silver_empty_readings (D15, D62, D64)
+-- Readings whose customers_out is empty. D15 keeps them out of silver_outages, but the county was
+-- collected in that run, so Gold event detection needs to know where they are (D64).
+-- -----------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS silver_empty_readings (
+    fips_code    STRING    NOT NULL COMMENT '5-digit county FIPS',
+    reading_time TIMESTAMP NOT NULL COMMENT 'Start of the 15-minute collection run, UTC (D1, D7)',
+    year         INT       NOT NULL COMMENT 'Calendar year of reading_time, UTC',
+    source_file  STRING             COMMENT 'Bronze source file'
+)
+PARTITIONED BY (year)
+COMMENT 'EAGLE-I readings with an empty customers_out, dropped from silver_outages (D15, D64)';
+
+INSERT INTO silver_empty_readings REPLACE WHERE year IN (${incremental.load_years})
+WITH
+-- Only the measure, key and time are needed. The measure is named sum in 2023 (D2).
+unioned AS (
+    SELECT fips_code, customers_out, run_start_time, source_file
+    FROM bronze_eaglei_2022
+    WHERE 2022 IN (${incremental.load_years})
+    UNION ALL
+    SELECT fips_code, `sum` AS customers_out, run_start_time, source_file
+    FROM bronze_eaglei_2023
+    WHERE 2023 IN (${incremental.load_years})
+    UNION ALL
+    SELECT fips_code, customers_out, run_start_time, source_file
+    FROM bronze_eaglei_2024
+    WHERE 2024 IN (${incremental.load_years})
+    UNION ALL
+    SELECT fips_code, customers_out, run_start_time, source_file
+    FROM bronze_eaglei_2025
+    WHERE 2025 IN (${incremental.load_years})
+),
+-- Empty means no value at all; text that is present but not a number stays a plain D15 drop.
+empty AS (
+    SELECT
+        LPAD(TRIM(fips_code), 5, '0')                            AS fips_code,
+        TRY_TO_TIMESTAMP(run_start_time, 'yyyy-MM-dd HH:mm:ss')  AS run_start_time,
+        source_file
+    FROM unioned
+    WHERE customers_out IS NULL OR TRIM(customers_out) = ''
+),
+-- Same placement rules as silver_outages: valid key and time, floored to the slot (D7, D15).
+floored AS (
+    SELECT
+        fips_code,
+        TIMESTAMP_SECONDS(FLOOR(UNIX_SECONDS(run_start_time) / 900) * 900) AS reading_time,
+        source_file
+    FROM empty
+    WHERE fips_code RLIKE '^[0-9]{5}$'
+      AND run_start_time IS NOT NULL
+),
+-- One row per county and slot, and none where the slot also has a real reading (D7 keeps that).
+deduped AS (
+    SELECT f.fips_code, f.reading_time, MIN(f.source_file) AS source_file
+    FROM floored AS f
+    INNER JOIN bronze_state_regions AS r ON r.state_fips = LEFT(f.fips_code, 2)
+    ANTI JOIN silver_outages AS s
+        ON  s.fips_code    = f.fips_code
+        AND s.reading_time = f.reading_time
+    GROUP BY f.fips_code, f.reading_time
+)
+SELECT fips_code, reading_time, YEAR(reading_time) AS year, source_file
+FROM deduped
+WHERE YEAR(reading_time) IN (${incremental.load_years});
 
 
 -- -----------------------------------------------------------------------------
