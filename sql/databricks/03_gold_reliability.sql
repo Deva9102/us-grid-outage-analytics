@@ -144,7 +144,7 @@ reasons AS (
             WHEN state_coverage_status = 'coverage_unknown' THEN 'coverage_unknown'
             WHEN NOT ranking_eligible THEN 'state below ${coverage.min_customer_coverage_pct}% customer coverage (D22)'
             WHEN state_share_without_denominator > ${ranking.max_share_without_denominator}
-                THEN 'over ${ranking.max_share_without_denominator_pct}% of the state''s customer-hours in units without a denominator (D60)'
+                THEN 'over ${ranking.max_share_without_denominator_pct}% of customer-hours in the state in units without a denominator (D60)'
             WHEN exclusion_reason IS NOT NULL THEN CONCAT('reviewed exclusion (D46): ', exclusion_reason)
             WHEN capped_share > ${footnotes.capped_share} AND peak_to_customers > ${footnotes.peak_to_customers}
                 THEN 'over ${footnotes.capped_share_pct}% of customer-hours from capped readings and peak above ${footnotes.peak_to_customers_label}x customers (D45)'  -- noqa: LT05

@@ -16,7 +16,7 @@ SELECT
     customer_hours_lost,
     max_peak_customers_out,
     outage_hours_per_1000_customers,
-    CAST(capped_customer_hours AS {{ dbt.type_float() }})        AS capped_customer_hours,
+    CAST(capped_customer_hours AS DOUBLE)        AS capped_customer_hours,
     capped_share,
     peak_to_customers,
     ranking_eligible,
