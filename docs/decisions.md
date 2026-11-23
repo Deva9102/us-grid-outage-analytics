@@ -73,6 +73,9 @@ incrementally in D56). See `docs/data_profile.md`.
 | D64 | Runs of empty readings up to 24 hours inside an outage are bridged like dropouts (resolves Q10) | Silver / Gold | 2026-11-22 |
 | D65 | Python 3.13, the newest version every dbt adapter supports | All | 2026-11-22 |
 | D66 | dbt star schema over Gold in its own environment; marts must equal Gold exactly | Marts | 2026-11-22 |
+| D67 | EAGLE-I coverage history and DQI loaded (2018-2022 only); county-year coverage from the readings | Bronze / Silver / Marts | 2026-11-23 |
+| D68 | Analysis layer: queries on the marts only, storm families, numbers in the docs checked against the queries | Analysis | 2026-11-23 |
+| D69 | Two portability fixes: DOUBLE instead of FLOAT in the marts, no doubled quote in a Gold literal | Gold / Marts | 2026-11-23 |
 
 ---
 
@@ -2468,6 +2471,96 @@ Two documented exceptions:
   reading yet.
 - 9 utility rows for American Samoa, Guam and the Northern Mariana Islands have no `dim_state`
   row. EAGLE-I does not cover those territories, so their relationship test excludes them.
+
+## D67. EAGLE-I coverage metadata loaded; coverage after 2022 measured from the readings
+
+**What:**
+- `coverage_history.csv` and `DQI.csv` (already in the volume with MCC) now load into
+  `bronze_eaglei_coverage_history` and `bronze_eaglei_dqi`, all text (D14).
+- They are parsed in `silver_eaglei_coverage_history` and `silver_eaglei_dqi`
+  (`02_silver_sources.sql`):
+  - the year comes from the m/d/yy date;
+  - FEMA regions 1-10 become I-X, as in the region lookup (D8);
+  - shares stay as published.
+- dbt marts `fct_published_coverage` (state-year) and `fct_data_quality_index` (FEMA region-year)
+  expose them.
+- `fct_county_coverage` (county-year: readings, first and last reading, customers) measures
+  coverage from the readings for every year.
+- The test fixture copies both files whole.
+
+**Why:** Question 6 must not read coverage growth as outage growth. Both files stop at 2022 (56
+states and territories x 2018-2022, and 10 FEMA regions x 2018-2022), so they cannot cover
+2023-2025. For those years the check is the set of counties EAGLE-I reports each year, and a
+comparison on the counties reported in every year.
+
+**Rows affected:** 280 and 50 rows in each new Bronze and Silver table (fixture the same).
+`fct_county_coverage`: one row per county-year with readings (3,047 / 3,049 / 3,052 / 3,026
+counties in the 50 states and DC in 2022-2025, Q6). Four row-count checks are added: 123 quality
+checks in total.
+
+## D68. Analysis layer on the marts; every number in the docs is checked against a query
+
+**What:**
+- **Queries:** `sql/analysis/q1`-`q6` answer the six questions. They read only the dbt marts, use
+  CTEs, and run unchanged on Databricks and DuckDB. Each statement is one named result
+  (`-- result: <name>`).
+- **Results:** `scripts/analysis.py run` writes the results to `docs/analysis_results/` as CSV,
+  with one text form per value on both engines.
+- **Docs:** `render` fills `docs/findings.md` and `docs/case_study.md` from templates in
+  `docs/templates/`. Every number in them is a placeholder that names a result, a row and a column.
+- **Check:** `check` reruns the queries, compares them with the committed CSVs and re-renders the
+  docs; it fails on any difference (`make check-findings`). A fast pytest confirms the docs match
+  the committed CSVs.
+- **Charts:** `scripts/charts.py` draws the five charts from the same CSVs (`make charts`).
+- **Data dictionary:** `docs/data_dictionary.md` is written from the dbt docs
+  (`make data-dictionary`).
+- **Rounding:** every rounded value is cast to DECIMAL first. Rounding a double at an exact half
+  differed between the engines (104.35 to 104.3 or 104.4).
+- **Storm families:** `dim_storm_type.storm_group` groups the NOAA types the questions compare:
+  - Hurricane / tropical: the tropical_cyclone tier;
+  - Winter weather: ice and snow plus Winter Weather and the cold types;
+  - Thunderstorm wind;
+  - Other wind;
+  - Tornado;
+  - Wildfire;
+  - Heat;
+  - Flood;
+  - Other;
+  - No storm matched.
+- **Restoration:** Q4 reports durations for all events and for events with 10,000+ customers out
+  at the peak, because the median event is 1.5 hours long.
+- **Regions:** Q3 rates are customer-hours per 1,000 customers of the region per year.
+
+**Why:** A number typed into a document drifts from the data the next time the pipeline runs. Here
+it cannot: the check fails instead.
+
+**Rows affected:** 23 results.
+- **Same on both engines:** every result on Databricks is identical to DuckDB.
+- **D36 reference list:** the "counties outside calibrated states with a peak above 1.25x
+  customers" list now has 39 counties (38 in the states and DC, 1 PR region). D36 recorded 30
+  when it was written, and I could not reproduce that figure; the findings report the current
+  query and say so.
+
+## D69. Two portability fixes found by running the same SQL on both engines
+
+**What:**
+1. The marts cast decimal Gold columns with `dbt.type_float()`. That is a 4-byte FLOAT on
+   Databricks and DuckDB, so values lost precision (an event of 255.3 hours read 255.300003, and
+   large capped customer-hour totals kept only about 7 significant digits). The marts now cast to
+   DOUBLE, which is 8 bytes on all three engines.
+2. A D60 footnote in `03_gold_reliability.sql` was written `'... the state''s customer-hours ...'`.
+   DuckDB reads `''` as an escaped quote, but Spark SQL reads it as two adjacent literals, so
+   Databricks stored "the states customer-hours". It now reads "... of customer-hours in the state
+   in units without a denominator (D60)", with no quote to escape. No other literal in
+   `sql/databricks/` has a doubled quote.
+
+**Why:** Both bugs made the two engines disagree in ways the row-count and total checks did not
+see. The analysis results now match exactly.
+
+**Rows affected:**
+1. The DOUBLE cast changes no value in Gold; the mart columns now equal Gold exactly.
+2. The footnote text of 8 county-years in 2025 (the Connecticut planning regions) changes on
+   Databricks; no rank changes.
 
 ---
 

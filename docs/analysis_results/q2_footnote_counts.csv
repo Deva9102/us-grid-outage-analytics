@@ -1,0 +1,15 @@
+level,year,footnote_reason,rows_footnoted
+county,2022,"denominator under 1,000 customers (D11)",41
+county,2022,no denominator (D9),1
+county,2022,over 25% of customer-hours from capped readings and peak above 3x customers (D45),1
+county,2023,"denominator under 1,000 customers (D11)",41
+county,2023,no denominator (D9),1
+county,2023,over 25% of customer-hours from capped readings and peak above 3x customers (D45),1
+county,2024,"denominator under 1,000 customers (D11)",41
+county,2024,over 25% of customer-hours from capped readings and peak above 3x customers (D45),4
+county,2024,no denominator (D9),2
+county,2025,"denominator under 1,000 customers (D11)",42
+county,2025,no denominator (D9),11
+county,2025,over 10% of customer-hours in the state in units without a denominator (D60),8
+county,2025,over 25% of customer-hours from capped readings and peak above 3x customers (D45),1
+state,2025,over 10% of customer-hours in units without a denominator (D60),1

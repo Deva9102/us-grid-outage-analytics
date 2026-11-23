@@ -1,0 +1,5 @@
+year,national_rank,outage_hours_per_1000,customers,events,footnote_reason
+2022,17,54144.8,10181,607,
+2023,1,117504.8,10181,641,
+2024,,213513.9,10181,285,over 25% of customer-hours from capped readings and peak above 3x customers (D45)
+2025,1377,3476.5,10181,42,

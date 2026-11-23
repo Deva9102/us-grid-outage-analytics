@@ -1,0 +1,16 @@
+comparison,event_year,events,customer_hours_lost,largest_event_customer_hours,mean_duration_hours
+Gulf Coast hurricanes,2022,169,181886521,66586074,27.6
+Gulf Coast hurricanes,2023,83,12125328,2427787,31.5
+Gulf Coast hurricanes,2024,367,221659920,39189773,30.2
+Northeast winter storms,2022,793,26642668,2354937,10.8
+Northeast winter storms,2023,503,16415020,1124296,10.9
+Northeast winter storms,2024,602,45767409,4680760,15.6
+Northeast winter storms,2025,481,3525154,236590,5.8
+Texas winter weather and cold,2022,243,1947357,324907,5.8
+Texas winter weather and cold,2023,104,25179843,12788666,32.9
+Texas winter weather and cold,2024,131,334362,70266,3.2
+Texas winter weather and cold,2025,218,1371271,402564,4.5
+West wildfires,2022,628,5851166,885812,5.4
+West wildfires,2023,503,4166422,1488092,4.8
+West wildfires,2024,1040,5317671,776651,4.8
+West wildfires,2025,794,3920798,1305583,3.2

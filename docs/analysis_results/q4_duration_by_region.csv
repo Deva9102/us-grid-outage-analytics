@@ -1,0 +1,6 @@
+census_region,events,median_hours,p90_hours,large_events,large_median_hours,large_p90_hours
+Midwest,116169,1.5,6.5,797,29.5,104.4
+Northeast,72165,1.5,6.5,726,25.6,85.5
+South,324349,1.5,6.3,2249,15.5,108.3
+Territory,14775,2.25,11.3,1618,6.8,26.8
+West,74897,1.5,6.8,1404,4,57.9

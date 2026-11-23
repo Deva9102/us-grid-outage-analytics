@@ -1,0 +1,547 @@
+data_year,size_band,utility_name,state_abbr,parent_company,is_eversource_or_national_grid,saidi_without_med,rank_saidi_without_med,utilities_in_band
+2025,medium,City of Bristol - (TN),TN,,false,0,1,498
+2025,medium,City of Azusa,CA,,false,2,2,498
+2025,medium,Town of Braintree - (MA),MA,,false,3.8,3,498
+2025,medium,Watertown Municipal Utilities,SD,,false,4.2,4,498
+2025,medium,Plateau Electric Cooperative,TN,,false,4.8,5,498
+2025,medium,East Mississippi Elec Pwr Assn,MS,,false,5.2,6,498
+2025,medium,City of Austin - (MN),MN,,false,5.2,7,498
+2025,medium,City of Bowling Green - (OH),OH,,false,6.6,8,498
+2025,medium,City of Albemarle - (NC),NC,,false,6.9,9,498
+2025,medium,Fall River Rural Elec Coop Inc,ID,,false,7,10,498
+2025,medium,City of Hastings - (NE),NE,,false,7.1,11,498
+2025,medium,City of Fort Collins - (CO),CO,,false,8.1,12,498
+2025,medium,City of Grand Island - (NE),NE,,false,8.6,13,498
+2025,medium,Alameda Municipal Power,CA,,false,9,14,498
+2025,medium,City of Alexandria - (MN),MN,,false,9.3,15,498
+2025,medium,Manitowoc Public Utilities,WI,,false,9.5,16,498
+2025,medium,City of Marshfield - (WI),WI,,false,9.7,17,498
+2025,medium,City of Owatonna - (MN),MN,,false,9.9,18,498
+2025,medium,Town of North Attleborough - (MA),MA,,false,9.9,19,498
+2025,medium,Superior Water and Light Co,WI,,false,9.9,20,498
+2025,medium,City of Anoka,MN,,false,9.9,21,498
+2025,medium,"Dixie Escalante R E A, Inc",UT,,false,10,22,498
+2025,medium,Town of Mansfield - (MA),MA,,false,10.2,23,498
+2025,medium,Sun Prairie Utilities,WI,,false,10.5,24,498
+2025,medium,City of Springfield - (OR),OR,,false,10.9,25,498
+2025,medium,Board of Water Electric & Communications,IA,,false,11,26,498
+2025,medium,City of Denton - (TX),TX,,false,11.5,27,498
+2025,medium,Town of Apex- (NC),NC,,false,11.5,28,498
+2025,medium,City of Elk River,MN,,false,11.8,29,498
+2025,medium,Village of Freeport - (NY),NY,,false,12.2,30,498
+2025,medium,Shakopee Public Utilities Comm,MN,,false,12.7,31,498
+2025,medium,City of Burbank Water and Power - (CA),CA,,false,12.8,32,498
+2025,medium,City of Brookings - (SD),SD,,false,13.2,33,498
+2025,medium,City of College Station - (TX),TX,,false,13.3,34,498
+2025,medium,Overton Power District No 5,NV,,false,13.4,35,498
+2025,medium,City of Greenville - (TX),TX,,false,14.1,36,498
+2025,medium,Borough of Chambersburg - (PA),PA,,false,14.3,37,498
+2025,medium,City of Logan - (UT),UT,,false,14.6,38,498
+2025,medium,Rock Energy Cooperative,IL,,false,15.1,39,498
+2025,medium,City of Idaho Falls - (ID),ID,,false,16.8,40,498
+2025,medium,Northern Wasco County PUD - (OR),OR,,false,16.8,41,498
+2025,medium,City of Greenfield - (IN),IN,,false,17.2,42,498
+2025,medium,City of Shelbyville - (TN),TN,,false,17.4,43,498
+2025,medium,Village of Fairport - (NY),NY,,false,17.7,44,498
+2025,medium,City of Piqua - (OH),OH,,false,17.7,45,498
+2025,medium,City of Monroe - (NC),NC,,false,18.2,46,498
+2025,medium,City of Fremont - (NE),NE,,false,18.4,47,498
+2025,medium,City of St George - (UT),UT,,false,18.5,48,498
+2025,medium,City of Dyersburg,TN,,false,18.6,49,498
+2025,medium,City of Bowling Green - (KY),KY,,false,19.5,50,498
+2025,medium,Town of Reading - (MA),MA,,false,20.6,51,498
+2025,medium,City of Kaukauna (WI),WI,,false,20.7,52,498
+2025,medium,Easton Utilities Comm,MD,,false,20.7,53,498
+2025,medium,City of Ames - (IA),IA,,false,21.1,54,498
+2025,medium,Stillwater Utilities Authority,OK,,false,21.5,55,498
+2025,medium,"Florida Keys El Coop Assn, Inc",FL,,false,22.1,56,498
+2025,medium,City of Lodi - (CA),CA,,false,22.4,57,498
+2025,medium,City of Gallatin - (TN),TN,,false,22.7,58,498
+2025,medium,Henderson City Utility Comm,KY,,false,23,59,498
+2025,medium,Cass County Elec Coop Inc,ND,,false,23.7,60,498
+2025,medium,Egyptian Electric Coop Assn,IL,,false,23.9,61,498
+2025,medium,West River Electric Assn Inc,SD,,false,24,62,498
+2025,medium,Baldwin County El Member Corp,AL,,false,24.1,63,498
+2025,medium,Kerrville Public Utility Board,TX,,false,24.4,64,498
+2025,medium,Rochester Public Utilities,MN,,false,24.5,65,498
+2025,medium,City of Westerville - (OH),OH,,false,24.6,66,498
+2025,medium,Bristol Virginia Utilities,VA,,false,25.3,67,498
+2025,medium,City of Loveland - (CO),CO,,false,26.7,68,498
+2025,medium,City of Lafayette - (LA),LA,,false,26.9,69,498
+2025,medium,City of Palo Alto - (CA),CA,,false,27.2,70,498
+2025,medium,City of Salem - (VA),VA,,false,27.6,71,498
+2025,medium,Greenville Utilities Comm,NC,,false,27.7,72,498
+2025,medium,City of Frankfort - (KY),KY,,false,29.2,73,498
+2025,medium,Wright-Hennepin Coop Elec Assn,MN,,false,29.3,74,498
+2025,medium,"Mountain View Elec Assn, Inc",CO,,false,29.9,75,498
+2025,medium,Electrical Dist No3 Pinal County,AZ,,false,30.4,76,498
+2025,medium,Dunn County Electric Coop,WI,,false,31.6,77,498
+2025,medium,City of Holland - (MI),MI,,false,32.7,78,498
+2025,medium,City of Paducah - (KY),KY,,false,33.3,79,498
+2025,medium,City of Grand Haven - (MI),MI,,false,33.5,80,498
+2025,medium,City of Columbus - (MS),MS,,false,33.7,81,498
+2025,medium,City of Norwood - (MA),MA,,false,33.9,82,498
+2025,medium,City of Newark - (DE),DE,,false,35.2,83,498
+2025,medium,PUD No 1 of Benton County,WA,,false,36.1,84,498
+2025,medium,City of Cleveland - (TN),TN,,false,36.1,85,498
+2025,medium,City of New Bern - (NC),NC,,false,36.9,86,498
+2025,medium,City of Holyoke - (MA),MA,,false,37,87,498
+2025,medium,"Jo-Carroll Energy, Inc",IL,,false,37.2,88,498
+2025,medium,Columbia River Peoples Ut Dist,OR,,false,37.2,89,498
+2025,medium,Town of Shrewsbury - (MA),MA,,false,37.5,90,498
+2025,medium,Cheyenne Light Fuel & Power,WY,,false,37.5,91,498
+2025,medium,Palmetto Electric Coop Inc,SC,,false,38,92,498
+2025,medium,City of Statesville - (NC),NC,,false,38.1,93,498
+2025,medium,City of Geneva - (IL),IL,,false,38.5,94,498
+2025,medium,City of Richland - (WA),WA,,false,38.8,95,498
+2025,medium,City of Columbia - (MO),MO,,false,39.4,96,498
+2025,medium,City of Longmont,CO,,false,39.8,97,498
+2025,medium,City of Peru - (IN),IN,,false,39.8,98,498
+2025,medium,City of Traverse City - (MI),MI,,false,40,99,498
+2025,medium,Foley Board of Utilities,AL,,false,40.5,100,498
+2025,medium,Johnson County Rural E M C,IN,,false,41.6,101,498
+2025,medium,Verendrye Electric Coop Inc,ND,,false,41.7,102,498
+2025,medium,City of Fountain,CO,,false,42.1,103,498
+2025,medium,Lehi City Corporation,UT,,false,42.1,104,498
+2025,medium,Greenwood CPW,SC,,false,42.3,105,498
+2025,medium,Hancock-Wood Electric Coop Inc,OH,,false,42.6,106,498
+2025,medium,"Black Hills Power, Inc.",SD,,false,42.9,107,498
+2025,medium,Cimarron Electric Coop,OK,,false,43.2,108,498
+2025,medium,City of Siloam Springs - (AR),AR,,false,43.4,109,498
+2025,medium,Polk-Burnett Electric Coop,WI,,false,43.5,110,498
+2025,medium,City of Wadsworth - (OH),OH,,false,43.5,111,498
+2025,medium,"Indian Electric Coop, Inc",OK,,false,44.1,112,498
+2025,medium,Woodruff Electric Coop Corp,AR,,false,44.6,113,498
+2025,medium,City of Cuyahoga Falls - (OH),OH,,false,45.1,114,498
+2025,medium,People's Cooperative Services,MN,,false,45.2,115,498
+2025,medium,City of Oxford - (MS),MS,,false,46,116,498
+2025,medium,City of Batavia - (IL),IL,,false,46.6,117,498
+2025,medium,Hendricks County Rural E M C,IN,,false,46.9,118,498
+2025,medium,Union Electric Membership Corp - (NC),NC,,false,47.3,119,498
+2025,medium,City of Opelika - (AL),AL,,false,47.5,120,498
+2025,medium,"Poudre Valley REA, Inc",CO,,false,48.7,121,498
+2025,medium,City of Redding - (CA),CA,,false,49.5,122,498
+2025,medium,Minnesota Valley Electric Coop,MN,,false,49.6,123,498
+2025,medium,"Valley Electric Assn, Inc",NV,,false,50.1,124,498
+2025,medium,Ozarks Electric Coop Corp - (AR),AR,,false,50.2,125,498
+2025,medium,Nolin Rural Electric Coop Corp,KY,,false,50.5,126,498
+2025,medium,City of Wilson - (NC),NC,,false,50.7,127,498
+2025,medium,Boone Electric Coop,MO,,false,51,128,498
+2025,medium,City of Westfield - (MA),MA,,false,52,129,498
+2025,medium,Jones-Onslow Elec Member Corp,NC,,false,52.9,130,498
+2025,medium,Provo City Corp,UT,,false,53.3,131,498
+2025,medium,Iowa Lakes Electric Coop,IA,,false,53.5,132,498
+2025,medium,Maryville Utilities,TN,,false,54.2,133,498
+2025,medium,Tullahoma Board-Public Utils,TN,,false,54.5,134,498
+2025,medium,"Bandera Electric Coop, Inc",TX,,false,55.1,135,498
+2025,medium,Freeborn Mower Electric Cooperative,MN,,false,55.6,136,498
+2025,medium,Oklahoma Electric Coop Inc,OK,,false,55.8,137,498
+2025,medium,"UGI Utilities, Inc",PA,,false,56,138,498
+2025,medium,City of Manassas - (VA),VA,,false,56.1,139,498
+2025,medium,Steele-Waseca Cooperative Electric,MN,,false,56.1,140,498
+2025,medium,Northeastern Rural E M C,IN,,false,56.5,141,498
+2025,medium,Northern States Power Co - Minnesota,ND,,false,57,142,498
+2025,medium,Conway Corporation,AR,,false,57.2,143,498
+2025,medium,City of New Braunfels - (TX),TX,,false,57.9,144,498
+2025,medium,Bear Valley Electric Service,CA,,false,58.1,145,498
+2025,medium,Sioux Valley SW Elec Coop,SD,,false,58.5,146,498
+2025,medium,"Platte-Clay Electric Coop, Inc",MO,,false,58.8,147,498
+2025,medium,City of Pasadena - (CA),CA,,false,60,148,498
+2025,medium,Heber Light & Power Company,UT,,false,60.3,149,498
+2025,medium,York Electric Coop Inc,SC,,false,60.5,150,498
+2025,medium,City of Hamilton - (OH),OH,,false,60.8,151,498
+2025,medium,Turlock Irrigation District,CA,,false,61.5,152,498
+2025,medium,"Union Rural Electric Coop, Inc",OH,,false,62,153,498
+2025,medium,Crow Wing Cooperative Power & Light Comp,MN,,false,62.3,154,498
+2025,medium,"Tri-County Electric Coop, Inc (IL)",IL,,false,62.7,155,498
+2025,medium,City of Morristown - (TN),TN,,false,62.8,156,498
+2025,medium,Maquoketa Valley Rrl Elec Coop,IA,,false,63,157,498
+2025,medium,City of Taunton - (MA),MA,,false,63.6,158,498
+2025,medium,City of Kinston - (NC),NC,,false,63.8,159,498
+2025,medium,Montana-Dakota Utilities Co,ND,,false,64.9,160,498
+2025,medium,City of Concord - (NC),NC,,false,65.3,161,498
+2025,medium,Adams-Columbia Electric Coop,WI,,false,66.1,162,498
+2025,medium,Trico Electric Cooperative Inc,AZ,,false,66.4,163,498
+2025,medium,West Central Electric Coop Inc - (MO),MO,,false,66.5,164,498
+2025,medium,"La Plata Electric Assn, Inc",CO,,false,67.2,165,498
+2025,medium,City of Dothan - (AL),AL,,false,67.2,166,498
+2025,medium,Cherryland Electric Coop Inc,MI,,false,67.9,167,498
+2025,medium,City of Rock Hill - (SC),SC,,false,69.1,168,498
+2025,medium,Co-Mo Electric Coop Inc,MO,,false,69.2,169,498
+2025,medium,City of Santa Clara - (CA),CA,,false,69.3,170,498
+2025,medium,City of Bay City - (MI),MI,,false,69.5,171,498
+2025,medium,City of Painesville - (OH),OH,,false,69.7,172,498
+2025,medium,"Holy Cross Electric Assn, Inc",CO,,false,71.1,173,498
+2025,medium,Groton Dept of Utilities - (CT),CT,,false,71.2,174,498
+2025,medium,City of Rocky Mount - (NC),NC,,false,71.9,175,498
+2025,medium,Carteret-Craven El Member Corp,NC,,false,72.3,176,498
+2025,medium,Fayetteville Public Works Commission,NC,,false,72.5,177,498
+2025,medium,Bartholomew County Rural E M C,IN,,false,73.8,178,498
+2025,medium,Fitchburg Gas & Elec Light Co,MA,,false,74.4,179,498
+2025,medium,Tipmont Rural Elec Member Corp,IN,,false,74.9,180,498
+2025,medium,Clark County Rural E M C - (IN),IN,,false,75.7,181,498
+2025,medium,Central Georgia El Member Corp,GA,,false,76.5,182,498
+2025,medium,PUD No 1 of Chelan County - (WA),WA,,false,76.9,183,498
+2025,medium,Nebraska Public Power District,NE,,false,77,184,498
+2025,medium,"Coos-Curry Electric Coop, Inc",OR,,false,77.4,185,498
+2025,medium,Eastern Iowa Light & Power Coop,IA,,false,79.2,186,498
+2025,medium,"Mountain Electric Coop, Inc",TN,,false,79.3,187,498
+2025,medium,MiEnergy Cooperative,MN,,false,79.4,188,498
+2025,medium,"Choctawhatche Elec Coop, Inc",FL,,false,80.8,189,498
+2025,medium,NorthWestern Energy - (SD),SD,,false,81.6,190,498
+2025,medium,East Central Energy,MN,,false,82.3,191,498
+2025,medium,City of Edmond - (OK),OK,,false,82.4,192,498
+2025,medium,Sulphur Springs Valley E C Inc,AZ,,false,82.6,193,498
+2025,medium,Hart Electric Member Corp,GA,,false,82.9,194,498
+2025,medium,Coast Electric Power Assn - (MS),MS,,false,83.2,195,498
+2025,medium,Oakdale Electric Coop,WI,,false,83.5,196,498
+2025,medium,Central Missouri Elec Coop Inc,MO,,false,85.6,197,498
+2025,medium,"Covington Electric Coop, Inc",AL,,false,85.9,198,498
+2025,medium,Town of High Point,NC,,false,86,199,498
+2025,medium,Columbia Power System - (TN),TN,,false,86.2,200,498
+2025,medium,City of Owensboro - (KY),KY,,false,87.4,201,498
+2025,medium,Tri-County Elec Member Corp (NC),NC,,false,88.7,202,498
+2025,medium,"Beltrami Electric Coop, Inc",MN,,false,89.7,203,498
+2025,medium,Mid-Carolina Electric Coop Inc,SC,,false,90.2,204,498
+2025,medium,Easley Combined Utility System,SC,,false,90.9,205,498
+2025,medium,Unitil Energy Systems,NH,,false,91.1,206,498
+2025,medium,"Midwest Electric, Inc - (OH)",OH,,false,91.4,207,498
+2025,medium,Kootenai Electric Cooperative,ID,,false,93.6,208,498
+2025,medium,"Wiregrass Electric Coop, Inc",AL,,false,94,209,498
+2025,medium,City of Centralia - (WA),WA,,false,95.3,210,498
+2025,medium,"Black River Electric Coop, Inc - (SC)",SC,,false,96,211,498
+2025,medium,Stearns Cooperative Elec Assn,MN,,false,96.6,212,498
+2025,medium,Peninsula Light Company,WA,,false,97.7,213,498
+2025,medium,City of Floresville,TX,,false,99.5,214,498
+2025,medium,Johnson City - (TN),TN,,false,100,215,498
+2025,medium,Lumbee River Elec Member Corp,NC,,false,100.2,216,498
+2025,medium,City of Clarksville - (TN),TN,,false,100.5,217,498
+2025,medium,Flint Electric Membership Corp,GA,,false,101.3,218,498
+2025,medium,Nantucket Electric Co,MA,National Grid,true,102.6,219,498
+2025,medium,Butler Rural Electric Coop Inc - (OH),OH,,false,103,220,498
+2025,medium,MPD Electric Cooperative,SC,,false,103.3,221,498
+2025,medium,Owen Electric Coop Inc,KY,,false,103.3,222,498
+2025,medium,Edgecombe-Martin County E M C,NC,,false,103.8,223,498
+2025,medium,Three Rivers Electric Coop,MO,,false,104.1,224,498
+2025,medium,Nodak Electric Coop Inc,ND,,false,104.3,225,498
+2025,medium,Itasca-Mantrap Co-op Electrical Assn,MN,,false,104.9,226,498
+2025,medium,"San Luis Valley R E C, Inc",CO,,false,105.4,227,498
+2025,medium,"Big Bend Electric Coop, Inc",WA,,false,105.6,228,498
+2025,medium,City of Marietta - (GA),GA,,false,105.8,229,498
+2025,medium,Noble County R E M C,IN,,false,106.5,230,498
+2025,medium,Umatilla Electric Coop Assn,OR,,false,107.5,231,498
+2025,medium,"Lake Region Electric Coop, Inc - (OK)",OK,,false,107.7,232,498
+2025,medium,Randolph Electric Member Corp,NC,,false,107.9,233,498
+2025,medium,Liberty Utilities (Granite State Electri,NH,,false,108.5,234,498
+2025,medium,Consolidated Cooperative,OH,,false,109,235,498
+2025,medium,"San Bernard Electric Coop, Inc",TX,,false,110,236,498
+2025,medium,Blue Ridge Elec Member Corp - (NC),NC,,false,110.2,237,498
+2025,medium,McKenzie Electric Coop Inc,ND,,false,110.8,238,498
+2025,medium,Licking Rural Electric Inc,OH,,false,112,239,498
+2025,medium,Southern Pioneer Electric Company,KS,,false,112.1,240,498
+2025,medium,"Tri-County Electric Coop, Inc (SC)",SC,,false,112.2,241,498
+2025,medium,Nueces Electric Cooperative,TX,,false,113.5,242,498
+2025,medium,City of Greeneville - (TN),TN,,false,115.4,243,498
+2025,medium,Delta Montrose Electric Assn,CO,,false,115.5,244,498
+2025,medium,Diverse Power Incorporated,GA,,false,115.5,245,498
+2025,medium,Mountrail-Williams Elec Coop,ND,,false,115.7,246,498
+2025,medium,City of Ponca City - (OK),OK,,false,116,247,498
+2025,medium,PUD No 1 of Cowlitz County,WA,,false,116.1,248,498
+2025,medium,Runestone Electric Assn,MN,,false,116.3,249,498
+2025,medium,Grand Valley Power,CO,,false,116.4,250,498
+2025,medium,"Farmers Electric Coop, Inc - (MO)",MO,,false,117,251,498
+2025,medium,Inter County Energy Coop Corp - (KY),KY,,false,117.3,252,498
+2025,medium,City of Clinton - (TN),TN,,false,117.8,253,498
+2025,medium,Dixie Electric Coop - (AL),AL,,false,118.3,254,498
+2025,medium,Carroll Electric Coop Corp - (AR),MO,,false,118.5,255,498
+2025,medium,Coweta-Fayette El Member Corp,GA,,false,118.6,256,498
+2025,medium,Aiken Electric Coop Inc,SC,,false,118.9,257,498
+2025,medium,Tri-County Electric Coop (MI),MI,,false,119,258,498
+2025,medium,"Black Hills Electric Coop, Inc",SD,,false,120.1,259,498
+2025,medium,Lake Region Electric Cooperative - (MN),MN,,false,120.6,260,498
+2025,medium,"Choptank Electric Cooperative, Inc",MD,,false,120.6,261,498
+2025,medium,"Wheatland Electric Coop, Inc",KS,,false,121.3,262,498
+2025,medium,"Mountain Parks Electric, Inc",CO,,false,122.3,263,498
+2025,medium,"Laclede Electric Coop, Inc",MO,,false,123.1,264,498
+2025,medium,Barron Electric Coop,WI,,false,125.7,265,498
+2025,medium,Salt River Electric Coop Corp,KY,,false,126.1,266,498
+2025,medium,City of Thomasville - (GA),GA,,false,126.2,267,498
+2025,medium,Victory Electric Coop Assn Inc,KS,,false,126.4,268,498
+2025,medium,Farmers Rural Electric Coop Corp - (KY),KY,,false,127.7,269,498
+2025,medium,Wake Electric Membership Corp,NC,,false,128,270,498
+2025,medium,Citizens Electric Corporation - (MO),MO,,false,128.1,271,498
+2025,medium,"Lynches River Elec Coop, Inc",SC,,false,128.9,272,498
+2025,medium,Meade County Rural E C C,KY,,false,129,273,498
+2025,medium,"Pioneer Rural Elec Coop, Inc - (OH)",OH,,false,129.4,274,498
+2025,medium,City of Kansas City - (KS),KS,,false,130.2,275,498
+2025,medium,Ozarks Electric Coop Corp - (AR),OK,,false,131.6,276,498
+2025,medium,Otter Tail Power Co,ND,,false,131.9,277,498
+2025,medium,Heart of Texas Electric Coop,TX,,false,133.7,278,498
+2025,medium,"Central Florida Elec Coop, Inc",FL,,false,133.8,279,498
+2025,medium,Montana-Dakota Utilities Co,WY,,false,133.9,280,498
+2025,medium,Riverland Energy Cooperative,WI,,false,134.1,281,498
+2025,medium,Sumter Electric Member Corp,GA,,false,134.2,282,498
+2025,medium,Duck River Elec Member Corp,TN,,false,134.2,283,498
+2025,medium,"Rio Grande Electric Coop, Inc",TX,,false,134.4,284,498
+2025,medium,Rutherford Elec Member Corp,NC,,false,134.7,285,498
+2025,medium,Corridor Energy Cooperative,IA,,false,135,286,498
+2025,medium,Cuivre River Electric Coop Inc,MO,,false,135.5,287,498
+2025,medium,Otter Tail Power Co,MN,,false,136.3,288,498
+2025,medium,Carroll Electric Member Corp - (GA),GA,,false,136.8,289,498
+2025,medium,"Central Rural Electric Cooperative, Inc",OK,,false,137.7,290,498
+2025,medium,City of Kirkwood - (MO),MO,,false,137.9,291,498
+2025,medium,Brownsville Public Utilities Board,TX,,false,138.6,292,498
+2025,medium,Albany Utility Board,GA,,false,140.6,293,498
+2025,medium,City of Columbus - (OH),OH,,false,140.9,294,498
+2025,medium,Harrison County Rural E M C,IN,,false,140.9,295,498
+2025,medium,Lake Country Power,MN,,false,141.2,296,498
+2025,medium,Kentucky Utilities Co,VA,,false,141.7,297,498
+2025,medium,Trinity Valley Elec Coop Inc,TX,,false,142,298,498
+2025,medium,Jefferson Electric Member Corp,GA,,false,142.7,299,498
+2025,medium,MidAmerican Energy Co,IL,,false,143,300,498
+2025,medium,New Smyrna Beach City of,FL,,false,144.1,301,498
+2025,medium,PacifiCorp,ID,,false,146,302,498
+2025,medium,Piedmont Electric Member Corp,NC,,false,146.1,303,498
+2025,medium,Montana-Dakota Utilities Co,MT,,false,146.3,304,498
+2025,medium,"Santee Electric Coop, Inc",SC,,false,146.7,305,498
+2025,medium,Boone County Rural EMC,IN,,false,147.4,306,498
+2025,medium,Central Electric Membership Corp. - (NC),NC,,false,148.2,307,498
+2025,medium,"Holston Electric Coop, Inc",TN,,false,149.6,308,498
+2025,medium,City of Gastonia - (NC),NC,,false,150.4,309,498
+2025,medium,"Vermont Electric Cooperative, Inc",VT,,false,150.6,310,498
+2025,medium,"Mohave Electric Cooperative, Inc.",AZ,,false,151.9,311,498
+2025,medium,"Laurens Electric Coop, Inc",SC,,false,154.1,312,498
+2025,medium,Kenergy Corp,KY,,false,154.6,313,498
+2025,medium,"Peace River Electric Coop, Inc",FL,,false,154.8,314,498
+2025,medium,Corn Belt Energy Corporation,IL,,false,155.4,315,498
+2025,medium,"Consumers Power, Inc",OR,,false,156.3,316,498
+2025,medium,Singing River Elec Cooperative,MS,,false,156.4,317,498
+2025,medium,Eastern Illinois Elec Coop,IL,,false,157.1,318,498
+2025,medium,Kingsport Power Co,TN,,false,158,319,498
+2025,medium,"South Alabama Elec Coop, Inc",AL,,false,158.6,320,498
+2025,medium,Warren Rural Elec Coop Corp,KY,,false,158.6,321,498
+2025,medium,Blue Ridge Electric Coop Inc - (SC),SC,,false,160.3,322,498
+2025,medium,Menard Electric Coop,IL,,false,160.8,323,498
+2025,medium,Powell Valley Electric Coop,TN,,false,161.9,324,498
+2025,medium,City of Pulaski - (TN),TN,,false,162.6,325,498
+2025,medium,City of Marquette - (MI),MI,,false,162.6,326,498
+2025,medium,Jackson County Rural E M C - (IN),IN,,false,163.2,327,498
+2025,medium,Tideland Electric Member Corp,NC,,false,164.3,328,498
+2025,medium,"Bartlett Electric Coop, Inc",TX,,false,165.3,329,498
+2025,medium,City of Norwich - (CT),CT,,false,168.8,330,498
+2025,medium,City of Rockwood - (TN),TN,,false,169.6,331,498
+2025,medium,Mille Lacs Energy Cooperative,MN,,false,169.7,332,498
+2025,medium,Pee Dee Electric Member Corp,NC,,false,170.5,333,498
+2025,medium,Jackson Purchase Energy Corporation,KY,,false,170.7,334,498
+2025,medium,"Victoria Electric Coop, Inc",TX,,false,171.4,335,498
+2025,medium,City of Claremore,OK,,false,171.9,336,498
+2025,medium,"Southeastern IL Elec Coop, Inc",IL,,false,172,337,498
+2025,medium,"Lorain-Medina R E C, Inc",OH,,false,172.7,338,498
+2025,medium,Sevier County Electric System,TN,,false,174,339,498
+2025,medium,Flathead Electric Coop Inc,MT,,false,174,340,498
+2025,medium,"Empire Electric Assn, Inc",CO,,false,174.6,341,498
+2025,medium,"HILCO Electric Cooperative, Inc.",TX,,false,175.2,342,498
+2025,medium,Surry-Yadkin Elec Member Corp,NC,,false,176.4,343,498
+2025,medium,Roanoke Electric Member Corp,NC,,false,178.6,344,498
+2025,medium,Fleming-Mason Energy Coop Inc,KY,,false,178.9,345,498
+2025,medium,Okefenoke Rural El Member Corp,GA,,false,179.5,346,498
+2025,medium,City of Orangeburg - (SC),SC,,false,182.7,347,498
+2025,medium,Habersham Electric Membership Corp,GA,,false,185.2,348,498
+2025,medium,City of Jackson - (TN),TN,,false,185.5,349,498
+2025,medium,City of Fayetteville,TN,,false,187.1,350,498
+2025,medium,Bolivar Energy Authority,TN,,false,187.8,351,498
+2025,medium,Northern Plains Electric Coop,ND,,false,188.4,352,498
+2025,medium,"Northern Neck Elec Coop, Inc",VA,,false,188.6,353,498
+2025,medium,Central Alabama Electric Coop,AL,,false,188.8,354,498
+2025,medium,Otter Tail Power Co,SD,,false,188.9,355,498
+2025,medium,Yampa Valley Electric Assn Inc,CO,,false,189,356,498
+2025,medium,Upper Peninsula Power Company,MI,,false,189.9,357,498
+2025,medium,City of Cleveland - (OH),OH,,false,191.1,358,498
+2025,medium,"Central Texas Elec Coop, Inc",TX,,false,192.6,359,498
+2025,medium,Craighead Electric Coop Corp,AR,,false,192.6,360,498
+2025,medium,Southwestern Electric Coop Inc - (IL),IL,,false,194.5,361,498
+2025,medium,"Shelby Energy Coop, Inc - (KY)",KY,,false,197.7,362,498
+2025,medium,"Farmers Electric Coop, Inc - (NM)",NM,,false,198,363,498
+2025,medium,Coastal Electric Member Corp - (GA),GA,,false,198.5,364,498
+2025,medium,Southwest Arkansas E C C,AR,,false,199.7,365,498
+2025,medium,Kauai Island Utility Cooperative,HI,,false,202,366,498
+2025,medium,City of Dickson,TN,,false,202.2,367,498
+2025,medium,"North Arkansas Elec Coop, Inc",AR,,false,202.4,368,498
+2025,medium,Crisp County Power Comm,GA,,false,203.7,369,498
+2025,medium,Coosa Valley Electric Coop Inc,AL,,false,209.1,370,498
+2025,medium,Golden Valley Elec Assn Inc,AK,,false,211.6,371,498
+2025,medium,"Rural Electric Coop, Inc - (OK)",OK,,false,212,372,498
+2025,medium,Suwannee Valley Elec Coop Inc,FL,,false,212,372,498
+2025,medium,"Southwest Electric Coop, Inc",MO,,false,214.4,374,498
+2025,medium,Appalachian Electric Coop,TN,,false,214.8,375,498
+2025,medium,"Crawford Electric Coop, Inc",MO,,false,216.2,376,498
+2025,medium,"Pioneer Electric Coop, Inc - (KS)",KS,,false,218.1,377,498
+2025,medium,Prince George Electric Coop,VA,,false,222.2,378,498
+2025,medium,"Talquin Electric Coop, Inc",FL,,false,224.9,379,498
+2025,medium,"Canadian Valley Elec Coop, Inc",OK,,false,226.4,380,498
+2025,medium,Northeast Louisiana Power Coop Inc.,LA,,false,228.5,381,498
+2025,medium,"Tri-County Electric Coop, Inc (FL)",FL,,false,230.4,382,498
+2025,medium,"Newberry Electric Coop, Inc",SC,,false,230.4,383,498
+2025,medium,Kosciusko County Rural E M C,IN,,false,232.7,384,498
+2025,medium,Grady Electric Membership Corp,GA,,false,233.6,385,498
+2025,medium,Continental Divide El Coop Inc,NM,,false,234.5,386,498
+2025,medium,"Edisto Electric Coop, Inc",SC,,false,235.5,387,498
+2025,medium,"Cotton Electric Coop, Inc",OK,,false,237.9,388,498
+2025,medium,"West Florida El Coop Assn, Inc",FL,,false,237.9,389,498
+2025,medium,"Kit Carson Electric Coop, Inc",NM,,false,238.3,390,498
+2025,medium,Homer Electric Assn Inc,AK,,false,239.2,391,498
+2025,medium,Tri-County Elec Member Corp (TN),KY,,false,239.4,392,498
+2025,medium,Upper Michigan Energy Resources Corp.,MI,,false,240,393,498
+2025,medium,San Patricio Electric Coop Inc,TX,,false,240.2,394,498
+2025,medium,Petit Jean Electric Coop Corp,AR,,false,241.3,395,498
+2025,medium,Mecklenburg Electric Cooperative,VA,,false,244,396,498
+2025,medium,Northcentral Mississippi E P A,MS,,false,245,397,498
+2025,medium,Arkansas Valley Elec Coop Corp,AR,,false,249.5,398,498
+2025,medium,Okefenoke Rural El Member Corp,FL,,false,249.9,399,498
+2025,medium,Southern Rivers Energy,GA,,false,250.8,400,498
+2025,medium,Intercounty Electric Coop Assn - (MO),MO,,false,250.8,401,498
+2025,medium,Sequachee Valley Electric Coop,TN,,false,253.3,402,498
+2025,medium,Blue Grass Energy Coop Corp,KY,,false,255.4,403,498
+2025,medium,"Gulf Coast Electric Coop, Inc",FL,,false,257.1,404,498
+2025,medium,Alger-Delta Coop Electric Assn,MI,,false,257.2,405,498
+2025,medium,"Cookson Hills Elec Coop, Inc",OK,,false,258.8,406,498
+2025,medium,"Medina Electric Coop, Inc",TX,,false,259,407,498
+2025,medium,Altamaha Electric Member Corp,GA,,false,259.6,408,498
+2025,medium,Pearl River Valley El Pwr Assn,MS,,false,260.7,409,498
+2025,medium,High Plains Power Inc,WY,,false,262.6,410,498
+2025,medium,Taylor County Rural E C C,KY,,false,263,411,498
+2025,medium,City of Anderson - (IN),IN,,false,264.1,412,498
+2025,medium,West Kentucky Rural E C C,KY,,false,265,413,498
+2025,medium,"Lyntegar Electric Coop, Inc",TX,,false,266.9,414,498
+2025,medium,Midwest Energy Cooperative - (MI),MI,,false,267.5,415,498
+2025,medium,Southeastern Electric Coop Inc - (OK),OK,,false,268,416,498
+2025,medium,Tallapoosa River Elec Coop Inc,AL,,false,268.2,417,498
+2025,medium,Idaho Power Co,OR,,false,269.6,418,498
+2025,medium,Powder River Energy Corp,WY,,false,271.2,419,498
+2025,medium,Holmes-Wayne Electric Coop Inc,OH,,false,274.5,420,498
+2025,medium,"Central Valley Elec Coop, Inc",NM,,false,279.6,421,498
+2025,medium,Guernsey-Muskingum El Coop Inc,OH,,false,282.1,422,498
+2025,medium,Inland Power & Light Company,WA,,false,283,423,498
+2025,medium,Western Indiana Energy REMC,IN,,false,287.2,424,498
+2025,medium,Blue Ridge Mountain EMC - (GA),GA,,false,289.1,425,498
+2025,medium,PacifiCorp,CA,,false,297,426,498
+2025,medium,Rayle Electric Membership Corp,GA,,false,302.6,427,498
+2025,medium,Taylor Electric Coop Inc - (TX),TX,,false,309.1,428,498
+2025,medium,Midwest Energy Inc - (KS),KS,,false,313.8,429,498
+2025,medium,South Kentucky Rural E C C,KY,,false,314.4,430,498
+2025,medium,Cooke County Elec Coop Assn,TX,,false,315.1,431,498
+2025,medium,East Central Oklahoma Elec Coop Inc,OK,,false,321.1,432,498
+2025,medium,Southeastern Indiana R E M C,IN,,false,322.7,433,498
+2025,medium,Orcas Power & Light Coop,WA,,false,323.4,434,498
+2025,medium,"Southside Electric Coop, Inc",VA,,false,323.6,435,498
+2025,medium,Clark Energy Coop Inc - (KY),KY,,false,324.3,436,498
+2025,medium,FreeState Electric Coop,KS,,false,327.4,437,498
+2025,medium,Jackson Energy Coop Corp - (KY),KY,,false,334,438,498
+2025,medium,PUD No 1 of Grays Harbor County,WA,,false,338,439,498
+2025,medium,"Cullman Electric Coop, Inc",AL,,false,346.8,440,498
+2025,medium,Sam Houston Electric Coop Inc,TX,,false,347,441,498
+2025,medium,South Central Indiana REMC,IN,,false,349.3,442,498
+2025,medium,Cloverland Electric Co-op,MI,,false,356.9,443,498
+2025,medium,"Rusk County Electric Coop, Inc",TX,,false,357.2,444,498
+2025,medium,Utilities Dist-Western IN REMC,IN,,false,362.5,445,498
+2025,medium,"Missoula Electric Coop, Inc",MT,,false,363.1,446,498
+2025,medium,Concho Valley Elec Coop Inc,TX,,false,363.9,447,498
+2025,medium,Alaska Electric Light & Power Co.,AK,,false,368.6,448,498
+2025,medium,"Glades Electric Coop, Inc",FL,,false,382.9,449,498
+2025,medium,Matanuska Electric Assn Inc,AK,,false,390.3,450,498
+2025,medium,PUD No 1 of Lewis County - (WA),WA,,false,400.4,451,498
+2025,medium,Kankakee Valley Rural E M C,IN,,false,400.7,452,498
+2025,medium,Wheeling Power Co,WV,,false,425.6,453,498
+2025,medium,Fort Loudoun Electric Coop,TN,,false,433.3,454,498
+2025,medium,Liberty Utilities,CA,,false,435,455,498
+2025,medium,"Cumberland Valley Electric, Inc.",KY,,false,436.9,456,498
+2025,medium,PUD No 1 of Jefferson County,WA,,false,441.5,457,498
+2025,medium,City of Paris - (TN),TN,,false,443.7,458,498
+2025,medium,Southern Pine Electric Cooperative,MS,,false,446.5,459,498
+2025,medium,Norris Public Power District,NE,,false,464.8,460,498
+2025,medium,"Jemez Mountains Elec Coop, Inc",NM,,false,472.4,461,498
+2025,medium,"Navasota Valley Elec Coop, Inc",TX,,false,472.8,462,498
+2025,medium,Cherokee County Elec Coop Assn - (TX),TX,,false,483.4,463,498
+2025,medium,"Washington-St Tammany E C, Inc",LA,,false,484.4,464,498
+2025,medium,Central Virginia Electric Coop,VA,,false,501,465,498
+2025,medium,City of LaFollette,TN,,false,525,466,498
+2025,medium,Amicalola Electric Member Corp,GA,,false,531.1,467,498
+2025,medium,Carroll-White REMC,IN,,false,553.2,468,498
+2025,medium,Haywood Electric Member Corp,NC,,false,554.3,469,498
+2025,medium,Eastern Maine Electric Coop,ME,,false,559.4,470,498
+2025,medium,Black River Electric Coop - (MO),MO,,false,564.3,471,498
+2025,medium,"Garkane Energy Coop, Inc",UT,,false,575.4,472,498
+2025,medium,"Wood County Electric Coop, Inc",TX,,false,575.9,473,498
+2025,medium,Delta Electric Power Assn,MS,,false,577.5,474,498
+2025,medium,"Kiamichi Electric Coop, Inc",OK,,false,587.6,475,498
+2025,medium,"Jasper-Newton Elec Coop, Inc",TX,,false,697.3,476,498
+2025,medium,Upshur Rural Elec Coop Corp,TX,,false,714.4,477,498
+2025,medium,"Buckeye Rural Elec Coop, Inc",OH,,false,995,478,498
+2025,medium,Deep East Texas Elec Coop Inc,TX,,false,1119,479,498
+2025,medium,Big Sandy Rural Elec Coop Corp,KY,,false,1138,480,498
+2025,medium,Southeast Colorado Power Assn,CO,,false,1280,481,498
+2025,medium,Washington Elec Member Corp,GA,,false,1789.3,482,498
+2025,medium,Southwest Mississippi E P A,MS,,false,1832.1,483,498
+2025,medium,Grayson Rural Electric Coop Corp,KY,,false,2391,484,498
+2025,very_large,Commonwealth Edison Co,IL,,false,38,1,62
+2025,very_large,Public Service Elec & Gas Co,NJ,,false,42.6,2,62
+2025,very_large,Florida Power & Light Co,FL,,false,44.6,3,62
+2025,very_large,Salt River Project,AZ,,false,49.9,4,62
+2025,very_large,Potomac Electric Power Co,MD,,false,53.8,5,62
+2025,very_large,Nevada Power Co,NV,,false,53.8,6,62
+2025,very_large,Atlantic City Electric Co,NJ,,false,55,7,62
+2025,very_large,PECO Energy Co,PA,,false,59.3,8,62
+2025,very_large,The Narragansett Electric Co,RI,National Grid (sold to PPL in May 2022),true,60.1,9,62
+2025,very_large,Baltimore Gas & Electric Co,MD,,false,65.4,10,62
+2025,very_large,NSTAR Electric Company,MA,Eversource,true,65.8,11,62
+2025,very_large,San Diego Gas & Electric Co,CA,,false,67.8,12,62
+2025,very_large,Arizona Public Service Co,AZ,,false,73.1,13,62
+2025,very_large,City of San Antonio - (TX),TX,,false,75.4,14,62
+2025,very_large,AES Indiana,IN,,false,76,15,62
+2025,very_large,Austin Energy,TX,,false,76.8,16,62
+2025,very_large,Tampa Electric Co,FL,,false,78.8,17,62
+2025,very_large,"Dominion Energy South Carolina, Inc",SC,,false,81.2,18,62
+2025,very_large,MidAmerican Energy Co,IA,,false,82,19,62
+2025,very_large,"Duke Energy Florida, LLC",FL,,false,82,20,62
+2025,very_large,Public Service Co of NH,NH,Eversource,true,83.4,21,62
+2025,very_large,Connecticut Light & Power Co,CT,Eversource,true,85.4,22,62
+2025,very_large,Los Angeles Department of Water & Power,CA,,false,88.7,23,62
+2025,very_large,Kentucky Utilities Co,KY,,false,89.3,24,62
+2025,very_large,Massachusetts Electric Co,MA,National Grid,true,91.1,25,62
+2025,very_large,Wisconsin Electric Power Co,WI,,false,93,26,62
+2025,very_large,Dayton Power & Light Co,OH,,false,96.5,27,62
+2025,very_large,Public Service Co of Oklahoma,OK,,false,98.1,28,62
+2025,very_large,PacifiCorp,UT,,false,101.6,29,62
+2025,very_large,Portland General Electric Co,OR,,false,103,30,62
+2025,very_large,PacifiCorp,OR,,false,104.3,31,62
+2025,very_large,"Duke Energy Indiana, LLC",IN,,false,107.6,32,62
+2025,very_large,Duke Energy Ohio Inc,OH,,false,108.4,33,62
+2025,very_large,Northern States Power Co - Minnesota,MN,,false,115,34,62
+2025,very_large,PPL Electric Utilities Corp,PA,,false,115.6,35,62
+2025,very_large,Southern California Edison Co,CA,,false,116.4,36,62
+2025,very_large,Public Service Co of NM,NM,,false,116.5,37,62
+2025,very_large,Union Electric Co - (MO),MO,,false,119,38,62
+2025,very_large,City of Seattle - (WA),WA,,false,129.3,39,62
+2025,very_large,Ameren Illinois Company,IL,,false,129.6,40,62
+2025,very_large,Ohio Edison Co,OH,,false,131.5,41,62
+2025,very_large,Cleveland Electric Illum Co,OH,,false,136,42,62
+2025,very_large,Niagara Mohawk Power Corp.,NY,National Grid,true,140.2,43,62
+2025,very_large,"Duke Energy Carolinas, LLC",SC,,false,140.6,44,62
+2025,very_large,Idaho Power Co,ID,,false,141.2,45,62
+2025,very_large,Duke Energy Progress - (NC),NC,,false,144.5,46,62
+2025,very_large,Ohio Power Co,OH,,false,145.2,47,62
+2025,very_large,Public Service Co of Colorado,CO,,false,149.2,48,62
+2025,very_large,DTE Electric Company,MI,,false,150.7,49,62
+2025,very_large,Georgia Power Co,GA,,false,154.9,50,62
+2025,very_large,Consumers Energy Co - (MI),MI,,false,163.5,51,62
+2025,very_large,"Duke Energy Carolinas, LLC",NC,,false,171.9,52,62
+2025,very_large,Central Maine Power Co,ME,,false,177,53,62
+2025,very_large,Puget Sound Energy Inc,WA,,false,178,54,62
+2025,very_large,Pacific Gas & Electric Co.,CA,,false,207.8,55,62
+2025,very_large,FirstEnergy Pennsylvania Electric Co,PA,,false,216.9,56,62
+2025,very_large,Entergy Louisiana LLC,LA,,false,218.1,57,62
+2025,very_large,Jersey Central Power & Lt Co,NJ,,false,234.2,58,62
+2025,very_large,Entergy Arkansas LLC,AR,,false,252.3,59,62
+2025,very_large,Entergy Texas Inc.,TX,,false,304.5,60,62
+2025,very_large,Appalachian Power Co,VA,,false,327.6,61,62
+2025,very_large,Puerto Rico Electric Pwr Authority,PR,,false,2151.1,62,62

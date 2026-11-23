@@ -1,0 +1,40 @@
+census_region,storm_group,events,customer_hours_lost,share_of_region,hours_per_1000_per_year
+Midwest,Thunderstorm wind,5894,207419649,0.3001,1462
+Midwest,No storm matched,101642,200831937,0.2906,1415.6
+Midwest,Winter weather,3615,149487784,0.2163,1053.7
+Midwest,Tornado,1026,100923991,0.146,711.4
+Midwest,Other wind,1168,20673932,0.0299,145.7
+Midwest,Flood,1409,7199628,0.0104,50.7
+Midwest,Other,818,2955623,0.0043,20.8
+Midwest,Heat,563,1484646,0.0021,10.5
+Midwest,Wildfire,34,95164,0.0001,0.7
+Northeast,No storm matched,64258,133665308,0.3236,1267.4
+Northeast,Winter weather,2379,92350251,0.2236,875.6
+Northeast,Thunderstorm wind,2704,91449628,0.2214,867.1
+Northeast,Other wind,1205,74940227,0.1814,710.6
+Northeast,Flood,902,8656152,0.021,82.1
+Northeast,Tornado,115,7907548,0.0191,75
+Northeast,Heat,424,1811556,0.0044,17.2
+Northeast,Hurricane / tropical,13,1233863,0.003,11.7
+Northeast,Wildfire,23,570434,0.0014,5.4
+Northeast,Other,142,450281,0.0011,4.3
+South,Hurricane / tropical,1202,763907941,0.3519,2665.1
+South,No storm matched,288181,728528468,0.3356,2541.7
+South,Thunderstorm wind,14437,323954465,0.1492,1130.2
+South,Winter weather,4032,108495784,0.05,378.5
+South,Tornado,1932,105951185,0.0488,369.6
+South,Other wind,2501,87847235,0.0405,306.5
+South,Flood,4352,31209360,0.0144,108.9
+South,Heat,5519,11166018,0.0051,39
+South,Other,1952,8965946,0.0041,31.3
+South,Wildfire,241,671801,0.0003,2.3
+West,No storm matched,61362,210199963,0.4028,1513.1
+West,Other wind,2486,167536260,0.321,1206
+West,Winter weather,4494,76526659,0.1466,550.9
+West,Thunderstorm wind,958,22288051,0.0427,160.4
+West,Wildfire,2965,19256056,0.0369,138.6
+West,Flood,1111,11800896,0.0226,84.9
+West,Heat,1274,7066001,0.0135,50.9
+West,Other,192,5742047,0.011,41.3
+West,Hurricane / tropical,12,786193,0.0015,5.7
+West,Tornado,43,642378,0.0012,4.6

@@ -1,0 +1,7 @@
+year,rank_without_footnotes,county,state_abbr,fips_code,outage_hours_per_1000,footnote_reason,footnote_evidence
+2022,1,Trinity,CA,06105,269792.3,"denominator under 1,000 customers (D11)",
+2022,15,Harding,SD,46063,59768,"denominator under 1,000 customers (D11)",
+2023,6,Trinity,CA,06105,100569.9,"denominator under 1,000 customers (D11)",
+2024,7,Austin,TX,48015,213513.9,over 25% of customer-hours from capped readings and peak above 3x customers (D45),"capped share 64.9%, peak 12.5x customers"
+2024,8,Waller,TX,48473,209652.4,over 25% of customer-hours from capped readings and peak above 3x customers (D45),"capped share 68.2%, peak 6.2x customers"
+2025,22,Alpine,CA,06003,62217.4,"denominator under 1,000 customers (D11)","capped share 26.9%, peak 3.1x customers"

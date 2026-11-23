@@ -1,0 +1,11 @@
+storm_group,events,median_hours,p90_hours,large_events,large_median_hours,large_p90_hours
+Hurricane / tropical,1231,6.5,150.8,256,77.4,331.3
+Winter weather,14520,2.75,26,435,50.5,136.7
+Tornado,3119,8.25,51.8,238,48.9,123.3
+Other wind,7369,3.75,35,446,40.3,128.9
+Thunderstorm wind,24026,5,25.8,1196,28.4,90.6
+Flood,8047,2.25,12.8,182,17.3,72.7
+Other,3114,2.25,9.8,40,10.8,44.5
+Heat,8637,1.5,6.8,192,6.5,27
+Wildfire,3265,1.75,7,53,3.8,69.5
+No storm matched,529027,1.5,5.5,3756,3.3,24

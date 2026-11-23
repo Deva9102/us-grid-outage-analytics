@@ -38,6 +38,10 @@ read it, so I change values there and nowhere else.
 | `make dbt-test-local` | Builds the pipeline on the fixture into a DuckDB file, runs `dbt build` on it (10 marts, 72 tests) and checks the marts against Gold. |
 | `make dbt-build` | `dbt build` on Databricks: the star schema marts in `workspace.outages`, then the same check against Gold (D66). |
 | `make dbt-docs` | dbt docs for the fixture build, with the lineage graph (`docs/images/dbt_lineage.png`). |
+| `make analysis` | Runs `sql/analysis/` on the marts (Databricks by default), saves the results to `docs/analysis_results/`, renders the findings and case study, and redraws the charts. |
+| `make check-findings` | Reruns the analysis queries and confirms every number in the findings and case study still matches. |
+| `make charts` | Redraws the five charts in `docs/images/` from the saved results. |
+| `make data-dictionary` | Writes `docs/data_dictionary.md` from the dbt docs. |
 | `make all` | `setup`, `download`, `test`, `pipeline`, `quality`, `export` in order. |
 | `make clean` | Removes `logs/` and Python caches; raw data is kept. |
 
@@ -67,6 +71,15 @@ event counts in the year it starts. dbt has its own uv environment in `dbt/`; se
 ## Power BI Dashboard
 
 ## Key Findings
+
+The answers to the six questions, with result tables and charts, are in
+[docs/findings.md](docs/findings.md). A one-page summary for a utility storm operations manager is
+in [docs/case_study.md](docs/case_study.md). Every number in both comes from a query in
+`sql/analysis/` on the dbt marts, and `make check-findings` reruns the queries and fails if a number
+no longer matches (D68). Mart tables and columns are described in
+[docs/data_dictionary.md](docs/data_dictionary.md).
+
+![Ten largest outage events](docs/images/chart_top10_events.png)
 
 ## Known Limitations
 
