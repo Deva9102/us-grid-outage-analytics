@@ -150,6 +150,17 @@ models:
                          'temperature', 'lightning_hail', 'other', 'not_causal', 'unmatched']
       - name: can_cause_outage
         description: The event type can be matched to an outage (D37).
+      - name: storm_group
+        description: >
+          Storm family the analysis compares (D68): Hurricane / tropical, Winter weather (ice, snow
+          and cold), Thunderstorm wind, Other wind, Tornado, Wildfire, Heat, Flood, Other, or No
+          storm matched.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['Hurricane / tropical', 'Winter weather', 'Thunderstorm wind', 'Other wind',
+                         'Tornado', 'Wildfire', 'Heat', 'Flood', 'Other', 'No storm matched']
 
   - name: dim_utility
     description: >
@@ -500,3 +511,103 @@ models:
         description: Rank by SAIFI without major event days.
       - name: rank_saifi_with_med
         description: Rank by SAIFI with major event days.
+
+  - name: fct_county_coverage
+    description: >
+      One row per county and year in which EAGLE-I reports the county (D67). EAGLE-I publishes
+      coverage only up to 2022, so this is the coverage measure for every year: which counties
+      report and the customers they hold. Year-over-year comparisons use counties that report in
+      every year, so coverage growth is never read as outage growth.
+    columns:
+      - name: county_year_key
+        description: <fips_code>-<year> (primary key).
+        data_tests: [unique, not_null]
+      - name: fips_code
+        description: County FIPS.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_county')
+                field: fips_code
+      - name: state_abbr
+        description: 2-letter state code.
+        data_tests: [not_null]
+      - name: year
+        description: Calendar year of the readings.
+        data_tests: [not_null]
+      - name: readings
+        description: >
+          15-minute readings in the year. EAGLE-I has a row only when customers are out (D3), so
+          this measures activity, not hours of coverage.
+      - name: first_reading
+        description: First reading of the year, UTC.
+      - name: last_reading
+        description: Last reading of the year, UTC.
+      - name: customers
+        description: County denominator (D13); NULL when none (D9).
+
+  - name: fct_published_coverage
+    description: >
+      EAGLE-I's published customer coverage per state and year (coverage_history.csv, D67),
+      2018-2022 only. Includes American Samoa, Guam and the Northern Mariana Islands, which have no
+      EAGLE-I counties.
+    columns:
+      - name: state_year_key
+        description: <state_abbr>-<year> (primary key).
+        data_tests: [unique, not_null]
+      - name: state_abbr
+        description: 2-letter state or territory code.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_state')
+                field: state_abbr
+              config:
+                where: "state_abbr NOT IN ('AS', 'GU', 'MP')"
+      - name: year
+        description: Year of the published coverage.
+        data_tests: [not_null]
+      - name: total_customers
+        description: Customers in the state, as EAGLE-I counts them.
+      - name: min_covered
+        description: Fewest customers covered by EAGLE-I's collection during the year.
+      - name: max_covered
+        description: Most customers covered during the year.
+      - name: min_share_covered
+        description: min_covered / total_customers.
+      - name: max_share_covered
+        description: max_covered / total_customers.
+
+  - name: fct_data_quality_index
+    description: >
+      EAGLE-I's data quality index per FEMA region and year (DQI.csv, D67), 2018-2022 only.
+    columns:
+      - name: region_year_key
+        description: <fema_region>-<year> (primary key).
+        data_tests: [unique, not_null]
+      - name: fema_region
+        description: FEMA region I-X (D8).
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X']
+      - name: year
+        description: Year of the index.
+        data_tests: [not_null]
+      - name: success_rate_pct
+        description: Share of collection attempts that succeeded, in percent.
+      - name: percent_enabled
+        description: Share of known utilities whose outage feed is collected, in percent.
+      - name: spatial_precision_pct
+        description: Share of customers whose outages are placed at county level, in percent.
+      - name: customer_coverage_pct
+        description: Share of customers covered, in percent.
+      - name: max_covered
+        description: Most customers covered during the year.
+      - name: total_customers
+        description: Customers in the region.
+      - name: dqi
+        description: EAGLE-I data quality index, 0-100.

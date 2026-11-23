@@ -17,7 +17,31 @@ unmatched AS (
         CAST(NULL AS {{ dbt.type_int() }})                 AS severity_rank,
         'unmatched'                                        AS storm_tier,
         FALSE                                              AS can_cause_outage
+),
+-- Every event type with its severity, then the analysis group (D68): the storm families the
+-- questions compare. Cold-weather types sit with winter storms, heat apart from them.
+typed AS (
+    SELECT * FROM severity
+    UNION ALL
+    SELECT * FROM unmatched
 )
-SELECT * FROM severity
-UNION ALL
-SELECT * FROM unmatched
+SELECT
+    storm_type,
+    severity_rank,
+    storm_tier,
+    can_cause_outage,
+    CASE
+        WHEN storm_tier = 'tropical_cyclone'                          THEN 'Hurricane / tropical'
+        WHEN storm_tier = 'ice_snow'
+          OR storm_type IN ('Winter Weather', 'Cold/Wind Chill',
+                            'Extreme Cold/Wind Chill')                THEN 'Winter weather'
+        WHEN storm_type = 'Thunderstorm Wind'                         THEN 'Thunderstorm wind'
+        WHEN storm_tier = 'wind'                                      THEN 'Other wind'
+        WHEN storm_tier = 'tornado'                                   THEN 'Tornado'
+        WHEN storm_tier = 'wildfire'                                  THEN 'Wildfire'
+        WHEN storm_type IN ('Excessive Heat', 'Heat')                 THEN 'Heat'
+        WHEN storm_tier = 'flood'                                     THEN 'Flood'
+        WHEN storm_tier = 'unmatched'                                 THEN 'No storm matched'
+        ELSE 'Other'
+    END AS storm_group
+FROM typed

@@ -63,6 +63,14 @@ sources:
             warn_after: {count: 8, period: day}
             error_after: {count: 35, period: day}
 
+      - name: silver_eaglei_coverage_history
+        description: >
+          EAGLE-I's published customer coverage per state and year (coverage_history.csv, D67).
+          The release publishes it for 2018-2022 only.
+      - name: silver_eaglei_dqi
+        description: >
+          EAGLE-I's data quality index per FEMA region and year (DQI.csv, D67), 2018-2022 only.
+
       - name: bronze_state_regions
         description: Reference lookup, state FIPS to state, Census region and division, FEMA region (D8, D16).
       - name: bronze_storm_event_severity

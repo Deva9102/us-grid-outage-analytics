@@ -24,3 +24,6 @@ exposures:
       - ref('dim_date')
       - ref('dim_storm_type')
       - ref('dim_utility')
+      - ref('fct_county_coverage')
+      - ref('fct_published_coverage')
+      - ref('fct_data_quality_index')
