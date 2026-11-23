@@ -20,7 +20,8 @@ def test_thresholds_scale_with_county_size(rows):
     assert rows("SELECT fips_code, ROUND(event_threshold, 4) FROM gold_event_thresholds ORDER BY 1") == [
         ("06037", 9499.375), ("15001", 334.7275), ("15003", 583.7025), ("15005", 100.0), ("15007", 100.0),
         ("15009", 279.265), ("48157", 1736.95), ("48201", 3362.325), ("49011", 330.995), ("49033", 100.0),
-        ("49035", 1265.08), ("49049", 821.5375), ("49057", 265.2875), ("51720", 100.0)]
+        ("49035", 1265.08), ("49049", 821.5375), ("49057", 265.2875), ("51720", 100.0),
+        ("54061", 138.7025)]
 
 
 def test_nationwide_feed_gap_is_found(rows):
@@ -79,6 +80,7 @@ EVENTS = [
     # One event across the 9-hour nationwide feed gap (D10), cut at both ends of window W3.
     ("48201-00002", "2024-05-23 18:00", "2024-05-24 12:00", 36, 19859, 105155, 105155, False, 9.0, 0.0),
     ("48201-00003", "2024-07-08 14:15", "2024-07-12 00:00", 317, 1660703, 85152728, 87051815, True, 0.0, 2.5),
+    ("48201-00004", "2024-12-31 16:00", "2024-12-31 16:15", 1, 6978, 1745, 1745, False, 0.0, 0.0),
     ("49011-00001", "2024-07-10 23:45", "2024-07-11 00:30", 3, 348, 261, 261, False, 0.0, 0.0),
     ("49033-00001", "2024-06-15 23:00", "2024-06-15 23:45", 3, 3935, 754, 2374, True, 0.0, 0.0),
     ("49033-00002", "2024-06-16 00:45", "2024-06-16 01:00", 1, 168, 42, 42, False, 0.0, 0.0),
@@ -87,6 +89,9 @@ EVENTS = [
     ("49057-00002", "2024-07-10 12:45", "2024-07-10 14:15", 6, 384, 572, 572, False, 0.0, 0.0),
     ("49057-00003", "2024-07-10 21:00", "2024-07-11 02:30", 22, 5706, 13678, 13678, False, 0.0, 0.0),
     ("49057-00004", "2024-07-11 06:15", "2024-07-11 07:00", 3, 2895, 903, 903, False, 0.0, 0.0),
+    # D57: one event from 2024-12-31 into 2025, cut at the end of window W6 (the full-data event ends
+    # 2025-01-01 22:15 at the 0.25% threshold of the full-data denominator).
+    ("54061-00001", "2024-12-31 19:30", "2025-01-02 00:00", 114, 8533, 39840, 39840, False, 0.0, 0.0),
 ]
 
 
@@ -148,7 +153,8 @@ def synthetic_silver(share: float) -> tuple:
                       FROM hm WHERE hhmm BETWEEN '10:00' AND '11:45'
         )
         SELECT r.fips_code, 'Test' AS county, 'Alabama' AS state, 'AL' AS state_abbr, 'South' AS census_region,
-               r.reading_time, r.customers_out, r.customers_out > k.customers AS exceeds_customers
+               r.reading_time, r.customers_out, r.customers_out > k.customers AS exceeds_customers,
+               YEAR(r.reading_time) AS year
         FROM r JOIN dim_county_customers k USING (fips_code)
     """)
     duckdb_pipeline.run_file(con, "03_gold_events.sql", FIXTURES)

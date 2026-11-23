@@ -8,7 +8,8 @@ Steps (run all, or pick with --steps):
              /Volumes/workspace/outages/raw/ with the Databricks SDK, keeping the folder structure
     sql      sql/databricks/01_bronze.sql, 02_silver.sql, 03_gold_events.sql, statement by statement
              with the quality gate of each layer (sql/databricks/90_quality_checks.sql) after
-             Bronze, Silver and Gold; a failed check stops the run (D48)
+             Bronze, Silver and Gold; a failed check stops the run (D48). Incremental (D56): only the
+             years in incremental.load_years are loaded into Bronze and Silver; --full loads all
     verify   row counts for every table in workspace.outages, compared with the DuckDB results
     quality  all quality checks on demand, results appended to gold_quality_results
 
@@ -21,7 +22,8 @@ The token is never printed.
 
 Safety: statements run with catalog workspace and schema outages. A statement is refused before
 it is sent if it contains DROP, ALTER, TRUNCATE, DELETE, GRANT or REVOKE, or a three-part name
-outside workspace.outages. Any failure or count mismatch stops the run.
+outside workspace.outages. The one exception is the retention statement of the quality results
+table (D55). Any failure or count mismatch stops the run.
 
 The Statement Execution API runs each statement in its own session, so USE and SET statements in
 the .sql files are skipped: catalog and schema are passed with every statement, and the check step
@@ -30,6 +32,7 @@ requires the warehouse's session time zone to be UTC.
 Usage:
     uv run python scripts/run_databricks.py
     uv run python scripts/run_databricks.py --steps check,convert
+    uv run python scripts/run_databricks.py --full      # every year, not only incremental.load_years
 """
 
 from __future__ import annotations
@@ -87,29 +90,34 @@ EXPECTED_TOP10 = [
     ("37021-00329", 23_641_092),
 ]
 EXPECTED_DETAIL = {
-    "feed gaps per year (D3)": [("2022", "3"), ("2023", "16"), ("2024", "41")],
-    "events per year": [("2022", "149695"), ("2023", "144747"), ("2024", "151819")],
-    "dropouts per year (D19)": [("2022", "6793"), ("2023", "5782"), ("2024", "6615")],
-    "exceeds_customers rows per year (D4, D21, D35, D36)": [("2022", "1841"), ("2023", "365"), ("2024", "8437")],
-    "denominator sources (D13)": [("NULL", "2"), ("max_mcc_2024", "372"), ("mcc", "2"),
+    "feed gaps per year (D3)": [("2022", "3"), ("2023", "16"), ("2024", "41"), ("2025", "12")],
+    "events per year": [("2022", "149695"), ("2023", "144747"), ("2024", "151819"), ("2025", "156218")],
+    "dropouts per year (D19)": [("2022", "6793"), ("2023", "5782"), ("2024", "6615"), ("2025", "4869")],
+    "exceeds_customers rows per year (D4, D21, D35, D36)": [("2022", "1841"), ("2023", "365"), ("2024", "8437"),
+                                                            ("2025", "3415")],
+    # D58: 7 counties first reported in 2025 take MCC; the 9 Connecticut planning regions have none.
+    "denominator sources (D13)": [("NULL", "11"), ("max_mcc_2024", "372"), ("mcc", "9"),
                                   ("total_customers_2024", "2687")],
     "calibrated states and counties (D21)": [("5", "246")],
     "counties held at their peak (D35)": [("11",)],
     "counties with the floor skipped (D36)": [("46063",)],
-    "storm events unplaced by reason (D30)": [("territory_not_tracked", "180"), ("water", "8544"),
-                                              ("zone_not_in_file", "32")],
-    "reliability rows by standard (D32)": [("IEEE 1366", "2204"), ("other", "704")],
+    "storm events unplaced by reason (D30)": [("territory_not_tracked", "306"), ("water", "10962"),
+                                              ("zone_not_in_file", "39")],
+    "reliability rows by standard (D32)": [("IEEE 1366", "2963"), ("not reported", "3"), ("other", "921")],
     "OE-417 incidents per year (D33)": [("2022", "390"), ("2023", "348")],
     "states below 70% coverage (D22)": [("0",)],
-    "storm-matched events per year (D37, D42)": [("2022", "17823"), ("2023", "19332"), ("2024", "18448")],
-    "rank 1 state per year (D38, D43)": [("2022", "ME"), ("2023", "ME"), ("2024", "SC")],
-    "ranked counties per year (D38, D44, D45)": [("2022", "3009"), ("2023", "3009"), ("2024", "3006")],
-    "utility rows flagged as source errors (D39)": [("2023", "54913")],
+    "storm-matched events per year (D37, D42)": [("2022", "17823"), ("2023", "19332"), ("2024", "18449"),
+                                                 ("2025", "17742")],
+    "rank 1 state per year (D38, D43)": [("2022", "ME"), ("2023", "ME"), ("2024", "SC"), ("2025", "WV")],
+    # D61: a county is in the reliability tables from its first reported year only.
+    "ranked counties per year (D38, D44, D45)": [("2022", "3004"), ("2023", "3006"), ("2024", "3006"),
+                                                 ("2025", "3006")],
+    "utility rows flagged as source errors (D39)": [("2023", "54913"), ("2025", "19162")],
     "OE-417 check status (D40)": [("matched", "180"), ("no county", "185"), ("no time", "70"), ("not matched", "303")],
     "Helene top-10 attribution (D41)": [("37021", "Tropical Storm"), ("45045", "Tropical Storm"), ("45083", "Tropical Storm")],
-    "rank 1 county per year (D44)": [("2022", "12015"), ("2023", "48015"), ("2024", "37199")],
+    "rank 1 county per year (D44)": [("2022", "12015"), ("2023", "48015"), ("2024", "37199"), ("2025", "26119")],
     "D45 footnoted county-years": [("2022", "49033"), ("2023", "49033"), ("2024", "04003"), ("2024", "48015"),
-                                   ("2024", "48473"), ("2024", "49033")],
+                                   ("2024", "48473"), ("2024", "49033"), ("2025", "49033")],
 }
 DETAIL_SQL = {
     "feed gaps per year (D3)":
@@ -161,6 +169,9 @@ DETAIL_SQL = {
 }
 
 FORBIDDEN = re.compile(r"\b(DROP|ALTER|TRUNCATE|DELETE|GRANT|REVOKE)\b", re.I)
+# The only DELETE allowed: quality results older than the retention period (D55).
+RETENTION = re.compile(rf"^\s*DELETE\s+FROM\s+{CFG['quality']['results_table']}\s+WHERE\s+run_ts\s*<\s*"
+                       r"CURRENT_TIMESTAMP(?:\(\))?\s*-\s*INTERVAL\s+\d+\s+DAYS\s*$", re.I)
 THREE_PART = re.compile(r"\b([A-Za-z_]\w*)\.([A-Za-z_]\w*)\.([A-Za-z_]\w*)\b")
 SKIPPED = re.compile(r"^\s*(USE|SET)\b", re.I)
 
@@ -195,7 +206,7 @@ def connect() -> tuple[WorkspaceClient, str]:
 
 def check_safe(stmt: str) -> None:
     code = without_literals(stmt)
-    if FORBIDDEN.search(code):
+    if FORBIDDEN.search(code) and not RETENTION.match(strip_comments(stmt)):
         raise Stop(f"Refused (forbidden keyword {FORBIDDEN.search(code).group(1)}):\n{summary(stmt)}")
     for cat, sch, _ in THREE_PART.findall(code):
         if (cat.lower(), sch.lower()) != (CATALOG, SCHEMA):
@@ -332,7 +343,32 @@ def step_upload(w: WorkspaceClient, warehouse_id: str) -> int:
     return len(upload_list())
 
 
-CREATED = re.compile(r"^\s*(?:CREATE\s+OR\s+REPLACE\s+TABLE|INSERT\s+OVERWRITE)\s+(\w+)", re.I)
+# Statements that build a table: replace it, overwrite it, or replace some of its partitions (D56).
+CREATED = re.compile(r"^\s*(?:CREATE\s+OR\s+REPLACE\s+TABLE|INSERT\s+OVERWRITE|INSERT\s+INTO(?=\s+\w+\s+REPLACE\s+WHERE))"
+                     r"\s+(\w+)", re.I)
+BRONZE_YEAR = re.compile(r"^\s*CREATE\s+OR\s+REPLACE\s+TABLE\s+bronze_eaglei_(\d{4})\b", re.I)
+# Values replaced for this run only (--full sets incremental.load_years to every year).
+RUN_OVERRIDES: dict = {}
+
+
+def for_this_run(statements: list[str], overrides: dict | None = None) -> list[str]:
+    """Drop the Bronze statements of EAGLE-I years outside incremental.load_years (D56).
+
+    Those yearly tables were loaded by an earlier run and stay untouched.
+    """
+    years = set(pipeline_config.load_years(overrides))
+    out = []
+    for stmt in statements:
+        m = BRONZE_YEAR.match(strip_comments(stmt))
+        if m and int(m.group(1)) not in years:
+            continue
+        out.append(stmt)
+    return out
+
+
+def full_rebuild_overrides() -> dict:
+    """Overrides that load every configured year: a full rebuild."""
+    return {"incremental.load_years": list(YEARS)}
 
 
 def check_years() -> None:
@@ -348,8 +384,10 @@ def step_sql(w: WorkspaceClient, warehouse_id: str, log: RunLog) -> None:
 
     check_years()
     run_ts = datetime.now(UTC).replace(microsecond=0, tzinfo=None)
+    print(f"Loading years {pipeline_config.load_years(RUN_OVERRIDES)} of {list(YEARS)}")
     for i, name in enumerate(SQL_FILES):
-        statements = split_statements(pipeline_config.render((SQL_DIR / name).read_text()))
+        statements = for_this_run(split_statements(pipeline_config.render((SQL_DIR / name).read_text(), RUN_OVERRIDES)),
+                                  RUN_OVERRIDES)
         print(f"\n{name}: {len(statements)} statements")
         with log.step(f"sql {name}") as step:
             step.rows = 0
@@ -440,10 +478,14 @@ def step_verify(w: WorkspaceClient, warehouse_id: str) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--steps", default="check,convert,upload,sql,verify")
+    parser.add_argument("--full", action="store_true", help="rebuild every year, not only incremental.load_years")
     args = parser.parse_args()
+    if args.full:
+        RUN_OVERRIDES.update(full_rebuild_overrides())
     steps = [s.strip() for s in args.steps.split(",")]
     log = RunLog("pipeline")
-    log.info("steps %s; target %s.%s; years %s", ",".join(steps), CATALOG, SCHEMA, list(YEARS))
+    log.info("steps %s; target %s.%s; years %s; loading %s", ",".join(steps), CATALOG, SCHEMA, list(YEARS),
+             pipeline_config.load_years(RUN_OVERRIDES))
     try:
         w = warehouse_id = None
         if any(s != "convert" for s in steps):

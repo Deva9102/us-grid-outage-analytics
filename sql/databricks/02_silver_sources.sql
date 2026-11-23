@@ -483,6 +483,8 @@ eaglei_counties AS (
     SELECT fips_code, county FROM bronze_eaglei_2023
     UNION DISTINCT
     SELECT fips_code, county FROM bronze_eaglei_2024
+    UNION DISTINCT
+    SELECT fips_code, county FROM bronze_eaglei_2025
 ),
 eaglei_names AS (
     SELECT DISTINCT

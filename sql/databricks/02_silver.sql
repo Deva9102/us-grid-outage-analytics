@@ -2,8 +2,13 @@
 -- 02_silver.sql
 -- Silver layer: one denominator table and one unified outage table.
 --
---   dim_county_customers  one customer denominator per county for all years (D13, D21, D35)
+--   dim_county_customers  one customer denominator per county for all years (D13, D21, D35, D58)
 --   silver_outages        all EAGLE-I years, cleaned, partitioned by year and state
+--
+-- Incremental (D56): silver_outages is created once and only the partitions of
+-- incremental.load_years are replaced (INSERT INTO ... REPLACE WHERE year IN (...)); every other
+-- year is left as it is. dim_county_customers is rebuilt every run but depends only on the
+-- denominator base years 2022-2024 (D58), so its existing rows never change.
 --
 -- Rule numbers refer to docs/decisions.md. The same logic is tested locally in
 -- scripts/test_silver_duckdb.py; keep the two in step.
@@ -44,6 +49,18 @@ eaglei_counties AS (
     SELECT LPAD(TRIM(fips_code), 5, '0') FROM bronze_eaglei_2023
     UNION DISTINCT
     SELECT LPAD(TRIM(fips_code), 5, '0') FROM bronze_eaglei_2024
+    UNION DISTINCT
+    SELECT LPAD(TRIM(fips_code), 5, '0') FROM bronze_eaglei_2025
+),
+-- Counties reported in the denominator base years 2022-2024. Only these enter the D21 state
+-- totals and the D35 floors, so a county first reported later cannot move the denominator of
+-- any existing county (D58).
+base_counties AS (
+    SELECT LPAD(TRIM(fips_code), 5, '0') AS fips_code FROM bronze_eaglei_2022
+    UNION DISTINCT
+    SELECT LPAD(TRIM(fips_code), 5, '0') FROM bronze_eaglei_2023
+    UNION DISTINCT
+    SELECT LPAD(TRIM(fips_code), 5, '0') FROM bronze_eaglei_2024
 ),
 -- 2024 total_customers is constant per county, so one value per county loses nothing (D13).
 totals_2024 AS (
@@ -65,6 +82,7 @@ mcc AS (
 compared AS (
     SELECT
         c.fips_code,
+        b.fips_code IS NOT NULL AS in_base_years,
         t.total_customers_2024,
         m.mcc_customers,
         COALESCE(
@@ -75,6 +93,7 @@ compared AS (
     FROM eaglei_counties AS c
     LEFT JOIN totals_2024 AS t ON t.fips_code = c.fips_code
     LEFT JOIN mcc         AS m ON m.fips_code = c.fips_code
+    LEFT JOIN base_counties AS b ON b.fips_code = c.fips_code
 ),
 -- Fallback order (D13): 2024 value with the D12 rule, then MCC, then none.
 d13 AS (
@@ -90,11 +109,14 @@ d13 AS (
             WHEN total_customers_2024 IS NOT NULL THEN 'total_customers_2024'
             WHEN mcc_customers IS NOT NULL        THEN 'mcc'
         END AS denominator_source,
-        is_mismatch AS denominator_mismatch
+        is_mismatch AS denominator_mismatch,
+        in_base_years
     FROM compared
 ),
 -- Highest customers out ever reported per county: the floor for calibration (D35).
 -- Dropout readings (D19) are falls of more than 90%, so they are never the maximum.
+-- Only the denominator base years 2022-2024 count: a later year must not move the one
+-- denominator of earlier years (D58).
 peaks AS (
     SELECT LPAD(TRIM(fips_code), 5, '0') AS fips_code, MAX(TRY_CAST(customers_out AS BIGINT)) AS peak_customers_out
     FROM (
@@ -111,6 +133,7 @@ state_totals AS (
     SELECT r.state_abbr, SUM(d.customers) AS d13_customers
     FROM d13 AS d
     INNER JOIN bronze_state_regions AS r ON r.state_fips = LEFT(d.fips_code, 2)
+    WHERE d.in_base_years
     GROUP BY r.state_abbr
 ),
 -- A state is calibrated only where it exceeds EIA by more than calibration.state_ratio; never scaled up (D21).
@@ -135,7 +158,7 @@ floors AS (
         END AS floor_customers
     FROM d13 AS d
     LEFT JOIN peaks AS p ON p.fips_code = d.fips_code
-    WHERE d.customers IS NOT NULL
+    WHERE d.customers IS NOT NULL AND d.in_base_years
 ),
 -- Counties of calibrated states, ordered by how far their floor sits above their D13 value.
 ordered AS (
@@ -188,7 +211,8 @@ final AS (
         d.customers AS d13_customers,
         d.denominator_source,
         d.denominator_mismatch,
-        COALESCE(st.state_calibration_factor, 1.0) AS state_calibration_factor,
+        -- A county first reported after the base years keeps its D13 value, uncalibrated (D58).
+        CASE WHEN d.in_base_years THEN COALESCE(st.state_calibration_factor, 1.0) ELSE 1.0 END AS state_calibration_factor,
         COALESCE(o.pos <= s.m, FALSE)              AS peak_floor_applied,
         COALESCE(o.floor_skipped, FALSE)           AS peak_floor_skipped,
         CASE
@@ -219,7 +243,7 @@ FROM final;
 -- silver_outages (D1, D2, D4, D6, D7, D8, D15, D16)
 -- -----------------------------------------------------------------------------
 
-CREATE OR REPLACE TABLE silver_outages (
+CREATE TABLE IF NOT EXISTS silver_outages (
     fips_code         STRING    NOT NULL COMMENT '5-digit county FIPS',
     county            STRING             COMMENT 'County name as reported by EAGLE-I',
     state             STRING    NOT NULL COMMENT 'State name from the region lookup, joined on state FIPS',
@@ -237,21 +261,32 @@ CREATE OR REPLACE TABLE silver_outages (
 PARTITIONED BY (year, state)
 COMMENT 'EAGLE-I county outages, all years unified';
 
-INSERT OVERWRITE silver_outages
+-- Only the partitions of the load years are replaced; Delta rejects a row of any other year (D56).
+INSERT INTO silver_outages REPLACE WHERE year IN (${incremental.load_years})
 WITH
 -- The customers-out measure is named sum in 2023 (D2); total_customers exists only in 2024.
+-- Every yearly file holds only readings of its own year (checked in D56), so a branch whose year
+-- is not loaded is a constant FALSE filter and its table is never scanned.
 unioned AS (
     SELECT fips_code, county, state, customers_out, CAST(NULL AS STRING) AS total_customers,
            run_start_time, source_file
     FROM bronze_eaglei_2022
+    WHERE 2022 IN (${incremental.load_years})
     UNION ALL
     SELECT fips_code, county, state, `sum` AS customers_out, CAST(NULL AS STRING) AS total_customers,
            run_start_time, source_file
     FROM bronze_eaglei_2023
+    WHERE 2023 IN (${incremental.load_years})
     UNION ALL
     SELECT fips_code, county, state, customers_out, total_customers,
            run_start_time, source_file
     FROM bronze_eaglei_2024
+    WHERE 2024 IN (${incremental.load_years})
+    UNION ALL
+    SELECT fips_code, county, state, customers_out, CAST(NULL AS STRING) AS total_customers,
+           run_start_time, source_file
+    FROM bronze_eaglei_2025
+    WHERE 2025 IN (${incremental.load_years})
 ),
 -- Bronze is all text (D14): pad FIPS, cast counts, parse timestamps as UTC without conversion (D1).
 typed AS (
@@ -306,7 +341,8 @@ SELECT
     d.source_file
 FROM deduped AS d
 INNER JOIN bronze_state_regions AS r ON r.state_fips = LEFT(d.fips_code, 2)
-LEFT JOIN  dim_county_customers AS k ON k.fips_code  = d.fips_code;
+LEFT JOIN  dim_county_customers AS k ON k.fips_code  = d.fips_code
+WHERE YEAR(d.reading_time) IN (${incremental.load_years});
 
 
 -- -----------------------------------------------------------------------------

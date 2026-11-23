@@ -24,6 +24,7 @@ counts AS (
     SELECT 'bronze_eaglei_2022' AS table_name, COUNT(*) AS observed, ${quality.expected_rows.bronze_eaglei_2022} AS expected FROM bronze_eaglei_2022
     UNION ALL SELECT 'bronze_eaglei_2023', COUNT(*), ${quality.expected_rows.bronze_eaglei_2023} FROM bronze_eaglei_2023
     UNION ALL SELECT 'bronze_eaglei_2024', COUNT(*), ${quality.expected_rows.bronze_eaglei_2024} FROM bronze_eaglei_2024
+    UNION ALL SELECT 'bronze_eaglei_2025', COUNT(*), ${quality.expected_rows.bronze_eaglei_2025} FROM bronze_eaglei_2025
     UNION ALL SELECT 'bronze_eaglei_mcc', COUNT(*), ${quality.expected_rows.bronze_eaglei_mcc} FROM bronze_eaglei_mcc
     UNION ALL SELECT 'bronze_state_regions', COUNT(*), ${quality.expected_rows.bronze_state_regions} FROM bronze_state_regions
     UNION ALL SELECT 'bronze_noaa_storm_events', COUNT(*), ${quality.expected_rows.bronze_noaa_storm_events} FROM bronze_noaa_storm_events
@@ -201,10 +202,12 @@ FROM compared;
 
 -- No county of a calibrated state sits below its peak customers out, unless D36 skipped its floor.
 WITH
--- Highest reading per county across all years: the D35 floor.
+-- Highest reading per county in the denominator base years: the D35 floor (D58). A later
+-- year's peak does not move the denominator; D4 flags and caps such readings instead.
 peaks AS (
     SELECT fips_code, MAX(customers_out) AS peak_customers_out
     FROM silver_outages
+    WHERE year IN (${denominator.base_years})
     GROUP BY fips_code
 )
 SELECT
@@ -248,6 +251,7 @@ WITH
 counts AS (
     SELECT 'gold_collection_runs' AS table_name, COUNT(*) AS observed, ${quality.expected_rows.gold_collection_runs} AS expected FROM gold_collection_runs
     UNION ALL SELECT 'gold_event_thresholds', COUNT(*), ${quality.expected_rows.gold_event_thresholds} FROM gold_event_thresholds
+    UNION ALL SELECT 'gold_event_reprocess_window', COUNT(*), ${quality.expected_rows.gold_event_reprocess_window} FROM gold_event_reprocess_window
     UNION ALL SELECT 'gold_feed_dropouts', COUNT(*), ${quality.expected_rows.gold_feed_dropouts} FROM gold_feed_dropouts
     UNION ALL SELECT 'gold_outage_events', COUNT(*), ${quality.expected_rows.gold_outage_events} FROM gold_outage_events
     UNION ALL SELECT 'gold_state_coverage', COUNT(*), ${quality.expected_rows.gold_state_coverage} FROM gold_state_coverage
@@ -381,6 +385,39 @@ checks AS (
     FROM gold_utility_reliability
 )
 SELECT 'gold' AS layer, check_name, observed, '0' AS expected, observed = 0 AS passed FROM checks;
+
+-- Every event the run rebuilt is in gold_outage_events, row for row (D56). Its row count is not a
+-- contract: it depends on the run (all events on a full rebuild, the window on an incremental one).
+WITH
+missing AS (
+    SELECT event_id, event_start, event_end, reading_count, customer_hours_lost FROM gold_outage_events_rebuilt
+    EXCEPT
+    SELECT event_id, event_start, event_end, reading_count, customer_hours_lost FROM gold_outage_events
+)
+SELECT
+    'gold' AS layer,
+    'gold_outage_events_rebuilt: rebuilt event missing from gold_outage_events (D56)' AS check_name,
+    CAST(COUNT(*) AS DOUBLE) AS observed,
+    '0' AS expected,
+    COUNT(*) = 0 AS passed
+FROM missing;
+
+-- Events of a county are numbered 1..n in time order with no gap or repeat, also after an
+-- incremental run continued the numbering of the kept events (D56).
+WITH
+numbered AS (
+    SELECT
+        CAST(SUBSTRING(event_id, 7) AS INT) AS event_seq,
+        ROW_NUMBER() OVER (PARTITION BY fips_code ORDER BY event_start) AS position
+    FROM gold_outage_events
+)
+SELECT
+    'gold' AS layer,
+    'gold_outage_events: event numbers not 1..n in time order per county (D56)' AS check_name,
+    CAST(COUNT_IF(event_seq <> position) AS DOUBLE) AS observed,
+    '0' AS expected,
+    COUNT_IF(event_seq <> position) = 0 AS passed
+FROM numbered;
 
 -- Events of one county never overlap, so a reading can belong to at most one of them.
 WITH

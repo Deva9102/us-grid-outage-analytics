@@ -10,6 +10,10 @@ writes one file per job task to build/databricks/ (gitignored):
                       tables exist by then, written to gold_quality_results; raise_error() fails
                       the task, so later tasks do not run, when any check fails
 
+Only the Bronze statements of the years in incremental.load_years are rendered (D56), so the
+job loads those years and leaves the others untouched. Each gate ends by deleting quality results
+older than quality.results_retention_days (D55).
+
 Each gate first checks the exact row count (quality.expected_rows, D50) of every table its own
 task builds, so a task that went wrong stops the job at once. Then come the checks of
 90_quality_checks.sql: Bronze and Silver checks in the gate of their layer, a Gold check in the
@@ -32,7 +36,7 @@ from pathlib import Path
 
 import pipeline_config
 import quality_checks
-from run_databricks import SQL_DIR, SQL_FILES, check_safe
+from run_databricks import CREATED, SQL_DIR, SQL_FILES, check_safe, for_this_run
 from sql_split import split_statements, strip_comments
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -47,7 +51,9 @@ JOB_TASKS: list[tuple[str, str, list[str]]] = [
     ("gold_reliability", "gold", ["03_gold_reliability.sql", "03_gold_oe417_check.sql"]),
 ]
 GATE_TABLE = "quality_gate_staging"
-CREATED = re.compile(r"^\s*(?:CREATE\s+OR\s+REPLACE\s+TABLE|INSERT\s+OVERWRITE)\s+(\w+)", re.I)
+# Tables that describe the run rather than hold data: their row count depends on what the run
+# loaded, so they have no expected count (D56). 90_quality_checks.sql checks them otherwise.
+RUN_TABLES = {"gold_outage_events_rebuilt"}
 TABLE_REF = re.compile(r"\b((?:bronze|silver|dim|gold)_\w+)\b")
 
 
@@ -70,7 +76,7 @@ def task_statements(files: list[str], overrides: dict | None) -> list[str]:
     out = []
     for name in files:
         out += split_statements(pipeline_config.render((SQL_DIR / name).read_text(), overrides))
-    return out
+    return for_this_run(out, overrides)  # only the Bronze years being loaded (D56)
 
 
 def gate_statements(task: str, layer: str, checks: list[str], cfg: dict) -> list[str]:
@@ -91,6 +97,8 @@ COMMENT 'Checks of the quality gate task running now (D54); overwritten by every
 INSERT INTO {results}
 SELECT CURRENT_TIMESTAMP, 'databricks', layer, check_name, observed, expected, passed
 FROM {GATE_TABLE}""",
+        f"""-- Retention (D55): results older than quality.results_retention_days are deleted.
+{quality_checks.retention_sql()}""",
         f"""-- Fail the task (and skip every later task) when any check failed.
 SELECT
     CASE WHEN COUNT_IF(NOT passed) > 0
@@ -139,7 +147,7 @@ def render(overrides: dict | None = None) -> dict[str, str]:
                 owner.setdefault(m.group(1), k)
 
     gates: dict[str, list[str]] = {
-        task: [row_count_check(layer, sorted(t for t, k2 in owner.items() if k2 == k), overrides)]
+        task: [row_count_check(layer, sorted(t for t, k2 in owner.items() if k2 == k and t not in RUN_TABLES), overrides)]
         for k, (task, layer, _) in enumerate(JOB_TASKS)}
     layer_tasks = {layer: [k for k, (_, lay, _) in enumerate(JOB_TASKS) if lay == layer]
                    for layer in quality_checks.LAYERS}

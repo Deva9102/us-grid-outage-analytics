@@ -19,7 +19,8 @@ SQL_FILES = sorted(SQL_DIR.glob("*.sql"))
 
 def test_config_loads_and_validates():
     cfg = pipeline_config.load()
-    assert cfg["years"]["list"] == [2022, 2023, 2024]
+    assert cfg["years"]["list"] == [2022, 2023, 2024, 2025]
+    assert cfg["incremental"]["load_years"] == [2025] and not cfg["incremental"]["full_rebuild"]
     assert (cfg["project"]["catalog"], cfg["project"]["schema"]) == ("workspace", "outages")
 
 
@@ -38,12 +39,23 @@ def test_sql_has_no_hard_coded_project_names(path):
 
 def test_expected_tables_are_created_and_counted():
     expected = set(pipeline_config.load()["quality"]["expected_rows"])
+    run_tables = {"gold_outage_events_rebuilt"}  # describes the run; no expected count (D56)
     created: set[str] = set()
     for path in SQL_FILES:
-        created |= set(re.findall(r"^CREATE OR REPLACE TABLE (\w+)", path.read_text(), re.M))
+        created |= set(re.findall(r"^CREATE (?:OR REPLACE TABLE|TABLE IF NOT EXISTS) (\w+)", path.read_text(), re.M))
     assert expected <= created
+    assert created - expected == run_tables
     counted = set(re.findall(r"'(\w+)'(?: AS table_name)?, COUNT\(\*\)", (SQL_DIR / "90_quality_checks.sql").read_text()))
     assert counted == expected
+
+
+def test_denominator_base_years_match_the_dim_sql():
+    """D58: the D21 totals and D35 floors in 02_silver.sql read exactly the base years' Bronze tables."""
+    text = (SQL_DIR / "02_silver.sql").read_text()
+    for cte in ("base_counties", "peaks"):
+        body = text.split(f"{cte} AS (", 1)[1].split("\n),", 1)[0]
+        years = sorted(int(y) for y in re.findall(r"bronze_eaglei_(\d{4})", body))
+        assert years == pipeline_config.load()["denominator"]["base_years"], cte
 
 
 def test_derived_values():
@@ -51,6 +63,8 @@ def test_derived_values():
     assert cfg["events"]["max_gap_runs"] == cfg["events"]["max_gap_hours"] * 4
     assert cfg["project"]["volume_path"] == "/Volumes/workspace/outages/raw"
     assert pipeline_config.render("${events.threshold_share}", {"events.threshold_share": 0.001}) == "0.001"
+    assert pipeline_config.render("year IN (${incremental.load_years})", {"incremental.load_years": [2024, 2025]}) \
+        == "year IN (2024, 2025)"
 
 
 @pytest.mark.parametrize("path, value", [
@@ -61,6 +75,10 @@ def test_derived_values():
     ("years", [2024, 2022]),
     ("project.schema", "outages; DROP"),
     ("utilities.eversource_ids", [4176]),
+    ("incremental.load_years", [2026]),
+    ("incremental.load_years", []),
+    ("incremental.lookback_days", 0),
+    ("quality.results_retention_days", 0.5),
 ])
 def test_invalid_values_are_rejected(path, value):
     bad = copy.deepcopy(yaml.safe_load(pipeline_config.CONFIG_PATH.read_text()))

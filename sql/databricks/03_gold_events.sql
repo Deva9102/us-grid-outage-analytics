@@ -2,10 +2,12 @@
 -- 03_gold_events.sql
 -- Gold layer: county outage events built from silver_outages (gaps and islands).
 --
---   gold_collection_runs   every 15-minute slot, collected or a nationwide feed gap (D3)
---   gold_event_thresholds  one event threshold per county (D18)
---   gold_feed_dropouts     county-level reporting dropouts (D19)
---   gold_outage_events     one row per county outage event (D3, D4, D10, D11, D13, D17-D19)
+--   gold_collection_runs         every 15-minute slot, collected or a nationwide feed gap (D3)
+--   gold_event_thresholds        one event threshold per county (D18)
+--   gold_event_reprocess_window  per county, where this run rebuilds dropouts and events (D56, D57)
+--   gold_feed_dropouts           county-level reporting dropouts (D19)
+--   gold_outage_events_rebuilt   the events this run rebuilt (D56)
+--   gold_outage_events           one row per county outage event (D3, D4, D10, D11, D13, D17-D19)
 --
 -- Event rule: a reading belongs to an event when customers_out >= the county's threshold,
 -- GREATEST(${events.min_customers_out}, share x customers) (D18). A gap of more than ${events.max_gap_hours} hour(s) since the county's
@@ -13,8 +15,10 @@
 -- excluding nationwide feed gaps (D3) and the county's own feed dropouts (D19), so
 -- neither can split an event.
 --
--- scripts/test_gold_events_duckdb.py runs the queries in this file in DuckDB. Keep each
--- statement in the form CREATE OR REPLACE TABLE <name> COMMENT '...' AS <query>;
+-- Incremental (D56): gold_feed_dropouts and gold_outage_events are created once and then
+-- rewritten as the rows before the reprocess window (kept unchanged) plus the rows rebuilt from
+-- it. A full rebuild (every year in incremental.load_years) keeps nothing, so both paths run the
+-- same rules. scripts/duckdb_pipeline.py runs this file in DuckDB for the tests.
 -- =============================================================================
 
 SET TIME ZONE 'UTC';
@@ -88,18 +92,146 @@ CROSS JOIN params AS p;
 
 
 -- -----------------------------------------------------------------------------
+-- gold_event_reprocess_window (D56, D57)
+-- Dropouts and events are rebuilt only from the reprocess window on; everything before it is
+-- kept as it is. The window opens incremental.lookback_days before the first reading of the
+-- years this run loads. A county with an event that ends after that point (an event that could
+-- continue into the new data, such as an outage running from Dec 31 into Jan 1) is rebuilt
+-- from the start of that event, so the event is rebuilt whole and stays one event. A full
+-- rebuild loads every year, so the window opens before the first reading and nothing is kept.
+-- -----------------------------------------------------------------------------
+
+-- Created once; later runs replace only the rows from the reprocess window on.
+CREATE TABLE IF NOT EXISTS gold_feed_dropouts (
+    fips_code              STRING    COMMENT '5-digit county FIPS',
+    dropout_start          TIMESTAMP COMMENT 'Slot of the first dropped reading, UTC',
+    dropout_end            TIMESTAMP COMMENT 'Slot of the recovery reading, UTC',
+    drop_start_run         INT       COMMENT 'run_index of the first dropped reading (D3)',
+    recovery_run           INT       COMMENT 'run_index of the recovery reading',
+    dropout_runs           INT       COMMENT 'Dropped runs: recovery_run - drop_start_run',
+    pre_drop_customers_out BIGINT    COMMENT 'Customers out in the run before the drop',
+    dropped_customers_out  BIGINT    COMMENT 'Customers out reported in the first dropped run',
+    recovery_customers_out BIGINT    COMMENT 'Customers out at recovery',
+    dropout_year           INT       COMMENT 'Calendar year of dropout_start, UTC'
+)
+COMMENT 'Feed dropouts: under ${dropouts.drop_below_pct}% of the prior reading, back to ${dropouts.recovery_pct}% in ${dropouts.recovery_max_minutes} min (D19)';  -- noqa: LT05
+
+-- Created once; later runs replace only the events of the reprocess window. Column types are
+-- those Databricks gave the original CREATE TABLE AS, so rebuilt rows match kept rows.
+CREATE TABLE IF NOT EXISTS gold_outage_events (
+    event_id                STRING         COMMENT '<fips_code>-<number of the event in its county, from 00001>',
+    fips_code               STRING         COMMENT '5-digit county FIPS',
+    county                  STRING         COMMENT 'County name as reported by EAGLE-I',
+    state                   STRING         COMMENT 'State name',
+    state_abbr              STRING         COMMENT '2-letter state code',
+    census_region           STRING         COMMENT 'Census region (D8)',
+    event_start             TIMESTAMP      COMMENT 'First qualifying reading, UTC',
+    event_end               TIMESTAMP      COMMENT 'End of the last qualifying run, UTC (D17)',
+    duration_hours          DECIMAL(27, 6) COMMENT 'event_end - event_start in hours',
+    reading_count           BIGINT         COMMENT 'Qualifying readings in the event',
+    peak_customers_out      BIGINT         COMMENT 'Highest customers out, uncapped (D4)',
+    event_threshold         DOUBLE         COMMENT 'County event threshold (D18)',
+    customer_hours_lost     DOUBLE         COMMENT 'Customer-hours, readings capped at the denominator (D4)',
+    customer_hours_lost_raw DOUBLE         COMMENT 'Customer-hours, uncapped',
+    exceeds_customers       BOOLEAN        COMMENT 'Some reading above the denominator (D4)',
+    spans_feed_gap          BOOLEAN        COMMENT 'A nationwide feed gap falls inside the event (D10)',
+    feed_gap_hours          DECIMAL(23, 2) COMMENT 'Hours of feed gap inside the event (D10)',
+    spans_dropout           BOOLEAN        COMMENT 'A county feed dropout falls inside the event (D19)',
+    dropout_hours           DECIMAL(23, 2) COMMENT 'Hours of dropout inside the event (D19)',
+    customers               BIGINT         COMMENT 'County denominator (D13)',
+    denominator_source      STRING         COMMENT 'Where the denominator comes from (D13)',
+    has_denominator         BOOLEAN        COMMENT 'False when the county has no denominator (D9)',
+    ranking_eligible        BOOLEAN        COMMENT 'Denominator of at least ${ranking.min_customers_label} customers (D11)',
+    peak_out_per_1000       DECIMAL(38, 13) COMMENT 'Capped peak per 1,000 customers',
+    customer_hours_per_1000 DOUBLE         COMMENT 'Customer-hours per 1,000 customers',
+    event_year              INT            COMMENT 'Calendar year of event_start, UTC'
+)
+COMMENT 'County outage events: readings at or above the county threshold, a gap over ${events.max_gap_hours} hour(s) of active runs starts a new event';
+
+CREATE OR REPLACE TABLE gold_event_reprocess_window
+COMMENT 'Per county: where this run rebuilds dropouts and events, and the last event number kept (D56, D57)'
+AS
+WITH
+-- The first reading of the years this run loads.
+new_data AS (
+    SELECT MIN(reading_time) AS first_new_reading
+    FROM silver_outages
+    WHERE year IN (${incremental.load_years})
+),
+-- The lookback: dropouts and events are rebuilt from incremental.lookback_days before it (D57).
+cut AS (
+    SELECT first_new_reading, first_new_reading - INTERVAL '${incremental.lookback_days}' DAY AS cut_time
+    FROM new_data
+),
+-- An event ending after the cut may continue into the new data: rebuild it from its start.
+reopened AS (
+    SELECT e.fips_code, MIN(e.event_start) AS first_reopened_start
+    FROM gold_outage_events AS e
+    CROSS JOIN cut AS c
+    WHERE e.event_end > c.cut_time
+    GROUP BY e.fips_code
+),
+-- Per county, the window opens at the cut or at its first reopened event, whichever is earlier.
+windows AS (
+    SELECT
+        k.fips_code,
+        c.first_new_reading,
+        c.cut_time,
+        LEAST(c.cut_time, COALESCE(r.first_reopened_start, c.cut_time)) AS reprocess_from
+    FROM dim_county_customers AS k
+    CROSS JOIN cut AS c
+    LEFT JOIN reopened AS r ON r.fips_code = k.fips_code
+),
+-- Kept events are numbered 1..n in their county; rebuilt events continue from n.
+kept AS (
+    SELECT e.fips_code, MAX(CAST(SUBSTRING(e.event_id, 7) AS INT)) AS last_kept_seq, COUNT(*) AS kept_events
+    FROM gold_outage_events AS e
+    INNER JOIN windows AS w ON w.fips_code = e.fips_code
+    WHERE e.event_start < w.reprocess_from
+    GROUP BY e.fips_code
+)
+SELECT
+    w.fips_code,
+    w.first_new_reading,
+    w.cut_time,
+    w.reprocess_from,
+    COALESCE(k.last_kept_seq, 0) AS last_kept_seq,
+    COALESCE(k.kept_events, 0)   AS kept_events
+FROM windows AS w
+LEFT JOIN kept AS k ON k.fips_code = w.fips_code;
+
+
+-- -----------------------------------------------------------------------------
 -- gold_feed_dropouts (D19)
 -- A dropout starts at a reported reading that is below dropouts.drop_below_share of the county's
 -- previous reading, where the previous reading was inside an event (at or above the threshold).
 -- It ends at the first later reading back at dropouts.recovery_share or more of that previous level,
 -- if that comes within dropouts.recovery_max_runs runs (config/pipeline.yml, D47).
+-- Dropouts starting before the cut are kept; the rest are rebuilt from the readings of the
+-- window plus the one run before it, which the drop rule compares with (D57).
 -- -----------------------------------------------------------------------------
 
-CREATE OR REPLACE TABLE gold_feed_dropouts
-COMMENT 'Feed dropouts: under ${dropouts.drop_below_pct}% of the prior reading, back to ${dropouts.recovery_pct}% in ${dropouts.recovery_max_minutes} min (D19)'
-AS
+INSERT OVERWRITE gold_feed_dropouts
 WITH
--- Every reading with its collected-run position and its county threshold.
+-- The cut is the same for every county.
+cut AS (
+    SELECT MIN(cut_time) AS cut_time FROM gold_event_reprocess_window
+),
+-- The first collected run at or after the cut.
+cut_run AS (
+    SELECT MIN(r.run_index) AS first_run
+    FROM gold_collection_runs AS r
+    CROSS JOIN cut AS c
+    WHERE r.is_collected AND r.slot_time >= c.cut_time
+),
+-- Dropouts that start before the cut are not affected by new readings and stay as they are.
+kept AS (
+    SELECT d.*
+    FROM gold_feed_dropouts AS d
+    CROSS JOIN cut_run AS c
+    WHERE d.drop_start_run < c.first_run
+),
+-- Every reading from the run before the cut on, with its collected-run position and threshold.
 readings AS (
     SELECT
         s.fips_code,
@@ -108,7 +240,9 @@ readings AS (
         COALESCE(t.event_threshold, ${events.min_customers_out}) AS event_threshold
     FROM silver_outages AS s
     INNER JOIN gold_collection_runs AS r ON r.slot_time = s.reading_time
+    CROSS JOIN cut_run AS c
     LEFT JOIN  gold_event_thresholds AS t ON t.fips_code = s.fips_code
+    WHERE r.run_index >= c.first_run - 1
 ),
 -- The previous reading and the next five readings of the same county. Recovery must come
 -- within dropouts.recovery_max_runs (at most 5) runs, and runs are distinct per county, so five
@@ -132,13 +266,15 @@ neighbours AS (
     WINDOW w AS (PARTITION BY fips_code ORDER BY run_index)
 ),
 -- A drop is a reported reading in the very next run below dropouts.drop_below_share. Missing
--- rows are zeros under D3 and are not treated as drops.
+-- rows are zeros under D3 and are not treated as drops. Drops before the cut are kept above.
 drops AS (
-    SELECT *
-    FROM neighbours
-    WHERE run_index = prev_run + 1
-      AND prev_out >= event_threshold
-      AND customers_out < ${dropouts.drop_below_share} * prev_out
+    SELECT n.*
+    FROM neighbours AS n
+    CROSS JOIN cut_run AS c
+    WHERE n.run_index >= c.first_run
+      AND n.run_index = n.prev_run + 1
+      AND n.prev_out >= n.event_threshold
+      AND n.customers_out < ${dropouts.drop_below_share} * n.prev_out
 ),
 -- The earliest of the next five readings that is back at dropouts.recovery_share of the pre-drop
 -- level, no more than dropouts.recovery_max_runs runs after the drop started.
@@ -160,46 +296,61 @@ recovered AS (
             WHEN run_5 <= run_index + ${dropouts.recovery_max_runs} AND out_5 >= ${dropouts.recovery_share} * prev_out THEN out_5
         END AS recovery_out
     FROM drops
-)
+),
 -- Only drops that recover are dropouts. The dropped runs are drop_start_run to recovery_run - 1.
-SELECT
-    d.fips_code,
-    s1.slot_time                        AS dropout_start,
-    s2.slot_time                        AS dropout_end,
-    d.run_index                         AS drop_start_run,
-    d.recovery_run,
-    d.recovery_run - d.run_index        AS dropout_runs,
-    d.prev_out                          AS pre_drop_customers_out,
-    d.customers_out                     AS dropped_customers_out,
-    d.recovery_out                      AS recovery_customers_out,
-    YEAR(s1.slot_time)                  AS dropout_year
-FROM recovered AS d
-INNER JOIN gold_collection_runs AS s1 ON s1.run_index = d.run_index
-INNER JOIN gold_collection_runs AS s2 ON s2.run_index = d.recovery_run
-WHERE d.recovery_run IS NOT NULL;
+rebuilt AS (
+    SELECT
+        d.fips_code,
+        s1.slot_time                        AS dropout_start,
+        s2.slot_time                        AS dropout_end,
+        d.run_index                         AS drop_start_run,
+        d.recovery_run,
+        d.recovery_run - d.run_index        AS dropout_runs,
+        d.prev_out                          AS pre_drop_customers_out,
+        d.customers_out                     AS dropped_customers_out,
+        d.recovery_out                      AS recovery_customers_out,
+        YEAR(s1.slot_time)                  AS dropout_year
+    FROM recovered AS d
+    INNER JOIN gold_collection_runs AS s1 ON s1.run_index = d.run_index
+    INNER JOIN gold_collection_runs AS s2 ON s2.run_index = d.recovery_run
+    WHERE d.recovery_run IS NOT NULL
+)
+SELECT * FROM kept
+UNION ALL
+SELECT * FROM rebuilt;
 
 
 -- -----------------------------------------------------------------------------
 -- gold_outage_events
+-- The events of the reprocess window are built into gold_outage_events_rebuilt, then
+-- gold_outage_events is rewritten as the kept events plus the rebuilt ones (D56).
 -- -----------------------------------------------------------------------------
 
-CREATE OR REPLACE TABLE gold_outage_events
-COMMENT 'County outage events: readings at or above the county threshold, a gap over ${events.max_gap_hours} hour(s) of active runs starts a new event'
+CREATE OR REPLACE TABLE gold_outage_events_rebuilt
+COMMENT 'Events rebuilt by the latest run: those starting in the reprocess window of their county (D56, D57)'
 AS
 WITH
--- Each dropout covers its dropped runs, drop_start_run to recovery_run - 1.
+-- Each dropout covers its dropped runs, drop_start_run to recovery_run - 1. Only dropouts that
+-- end inside a county's window can touch it.
 dropout_runs_all AS (
-    SELECT fips_code, EXPLODE(SEQUENCE(drop_start_run, recovery_run - 1)) AS run_index
-    FROM gold_feed_dropouts
+    SELECT d.fips_code, EXPLODE(SEQUENCE(d.drop_start_run, d.recovery_run - 1)) AS run_index
+    FROM gold_feed_dropouts AS d
+    INNER JOIN gold_event_reprocess_window AS w ON w.fips_code = d.fips_code
+    WHERE d.dropout_end > w.reprocess_from
 ),
--- Dropouts of the same county can overlap; each run counts once.
+-- Dropouts of the same county can overlap; each run counts once. Runs before the window do not
+-- change distances inside it.
 dropout_runs AS (
-    SELECT DISTINCT fips_code, run_index
-    FROM dropout_runs_all
+    SELECT DISTINCT a.fips_code, a.run_index
+    FROM dropout_runs_all AS a
+    INNER JOIN gold_collection_runs AS r ON r.run_index = a.run_index
+    INNER JOIN gold_event_reprocess_window AS w ON w.fips_code = a.fips_code
+    WHERE r.slot_time >= w.reprocess_from
 ),
 -- Only readings at or above the county's threshold can belong to an event (D18). The raw
 -- value is used: D4 keeps customers_out uncapped, the cap applies to metrics only. Dropout
--- readings were not really measured, so they are left out like feed gaps (D19).
+-- readings were not really measured, so they are left out like feed gaps (D19). Only readings
+-- inside the county's reprocess window are read.
 qualifying AS (
     SELECT
         s.fips_code,
@@ -213,11 +364,14 @@ qualifying AS (
         r.run_index,
         t.customers,
         t.denominator_source,
-        COALESCE(t.event_threshold, ${events.min_customers_out}) AS event_threshold
+        COALESCE(t.event_threshold, ${events.min_customers_out}) AS event_threshold,
+        w.last_kept_seq
     FROM silver_outages AS s
+    INNER JOIN gold_event_reprocess_window AS w ON w.fips_code = s.fips_code
     INNER JOIN gold_collection_runs AS r ON r.slot_time = s.reading_time
     LEFT JOIN  gold_event_thresholds AS t ON t.fips_code = s.fips_code
-    WHERE s.customers_out >= COALESCE(t.event_threshold, ${events.min_customers_out})
+    WHERE s.reading_time >= w.reprocess_from
+      AND s.customers_out >= COALESCE(t.event_threshold, ${events.min_customers_out})
       AND NOT EXISTS (
           SELECT 1 FROM dropout_runs AS d
           WHERE d.fips_code = s.fips_code AND d.run_index = r.run_index
@@ -260,7 +414,7 @@ with_previous AS (
         active_index - LAG(active_index) OVER (PARTITION BY fips_code ORDER BY reading_time) AS runs_since_previous
     FROM positioned
 ),
--- A new event starts at the county's first qualifying reading, or when more than
+-- A new event starts at the county's first qualifying reading in the window, or when more than
 -- events.max_gap_runs active runs (events.max_gap_hours) have passed since the previous one.
 -- A gap of exactly that length stays in the same event.
 flagged AS (
@@ -273,11 +427,11 @@ flagged AS (
     FROM with_previous
 ),
 -- The running SUM of the new-event flags numbers the events within each county: every
--- reading until the next flag carries the same number.
+-- reading until the next flag carries the same number. Numbers continue after the kept events.
 numbered AS (
     SELECT
         *,
-        SUM(is_new_event) OVER (
+        last_kept_seq + SUM(is_new_event) OVER (
             PARTITION BY fips_code
             ORDER BY reading_time
             ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
@@ -349,8 +503,10 @@ SELECT
     e.census_region,
     e.event_start,
     e.last_reading_time + INTERVAL 15 MINUTES                             AS event_end,
-    (UNIX_SECONDS(e.last_reading_time + INTERVAL 15 MINUTES)
-        - UNIX_SECONDS(e.event_start)) / 3600.0                           AS duration_hours,
+    -- Cast to the table's types (Databricks' own types for these expressions), so kept and
+    -- rebuilt rows never pass through another type when they are combined.
+    CAST((UNIX_SECONDS(e.last_reading_time + INTERVAL 15 MINUTES)
+        - UNIX_SECONDS(e.event_start)) / 3600.0 AS DECIMAL(27, 6))         AS duration_hours,
     e.reading_count,
     e.peak_customers_out,
     e.event_threshold,
@@ -358,20 +514,35 @@ SELECT
     e.customer_hours_lost_raw,
     e.exceeds_customers,
     o.gap_slots > 0                                                       AS spans_feed_gap,
-    o.gap_slots * 0.25                                                    AS feed_gap_hours,
+    CAST(o.gap_slots * 0.25 AS DECIMAL(23, 2))                            AS feed_gap_hours,
     e.dropout_slots > 0                                                   AS spans_dropout,
-    e.dropout_slots * 0.25                                                AS dropout_hours,
+    CAST(e.dropout_slots * 0.25 AS DECIMAL(23, 2))                        AS dropout_hours,
     e.customers,
     e.denominator_source,
     e.customers IS NOT NULL                                               AS has_denominator,
     COALESCE(e.customers >= ${ranking.min_customers}, FALSE)                                  AS ranking_eligible,
-    e.peak_customers_out_capped * 1000.0 / NULLIF(e.customers, 0)         AS peak_out_per_1000,
+    CAST(e.peak_customers_out_capped * 1000.0 / NULLIF(e.customers, 0) AS DECIMAL(38, 13)) AS peak_out_per_1000,
     e.customer_hours_lost * 1000.0 / NULLIF(e.customers, 0)               AS customer_hours_per_1000,
     YEAR(e.event_start)                                                   AS event_year
 FROM events AS e
 INNER JOIN gap_overlap AS o
     ON  o.fips_code = e.fips_code
     AND o.event_seq = e.event_seq;
+
+-- Kept events (before their county's window) plus the rebuilt ones. Delta reads the table's
+-- current version while it writes the new one, so a failed run leaves the previous events.
+INSERT OVERWRITE gold_outage_events
+WITH
+-- Events that start before their county's reprocess window stay exactly as they are.
+kept AS (
+    SELECT e.*
+    FROM gold_outage_events AS e
+    INNER JOIN gold_event_reprocess_window AS w ON w.fips_code = e.fips_code
+    WHERE e.event_start < w.reprocess_from
+)
+SELECT * FROM kept
+UNION ALL
+SELECT * FROM gold_outage_events_rebuilt;
 
 
 -- -----------------------------------------------------------------------------

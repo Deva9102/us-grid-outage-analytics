@@ -14,10 +14,20 @@ project:
 
 # EAGLE-I years loaded. Each year has its own Bronze table in 01_bronze.sql because the
 # column layout differs by year (D2); a year added here also needs its Bronze statement.
-years: [2022, 2023, 2024]
+years: [2022, 2023, 2024, 2025]
+
+# Incremental loading (D56, D57). A run (re)builds the Bronze table and the Silver partition of
+# each year in load_years and leaves every other year untouched. Gold events are reprocessed from
+# lookback_days before the first new reading (and from the start of any event still open then),
+# so an outage running across a year boundary stays one event. A full rebuild lists every year.
+incremental:
+  load_years: [2025]
+  lookback_days: 7
 
 denominator:
   mismatch_ratio: 2             # D12: MCC and 2024 total_customers differ by more than this factor
+  base_years: [2022, 2023, 2024]  # D58: only these years set the denominators (D21 totals, D35 floors);
+                                  # 02_silver.sql reads exactly these Bronze tables for them
 
 calibration:
   eia_year: 2024                # D21, D22: EIA-861 year the state totals come from
@@ -43,6 +53,8 @@ coverage:
 ranking:
   min_customers: 1000           # D11: counties under this denominator are not ranked
   ranked_jurisdictions: 51      # D43, D44: the 50 states and DC (quality gate)
+  max_share_without_denominator: 0.1   # D60: a state-year with more of its customer-hours in units
+                                       # without a denominator is footnoted, not ranked
 
 storm_match:                    # D37, D42
   window_before_hours: 12       # window opens this many hours before NOAA's begin time
@@ -95,50 +107,54 @@ quality:                        # sql/databricks/90_quality_checks.sql (D48)
   row_count_tolerance: 0              # expected counts are a contract: they must match exactly (D50)
   float_tolerance: 0.000001           # slack for shares computed in floating point
   results_table: gold_quality_results
+  results_retention_days: 90          # D55: each gate deletes results older than this
   # Row counts of the verified run (DuckDB and Databricks agree). Update only after a reviewed change.
+  # 2022-2025 with 2025 loaded incrementally; identical to a full rebuild (D56).
   expected_rows:
     bronze_eaglei_2022: 25796465
     bronze_eaglei_2023: 26101051
     bronze_eaglei_2024: 27701334
+    bronze_eaglei_2025: 30482141
     bronze_eaglei_mcc: 3234
     bronze_state_regions: 53
-    bronze_noaa_storm_events: 215282
-    bronze_nws_zone_county: 28391
-    bronze_eia861_reliability: 3042
-    bronze_eia861_sales: 8791
-    bronze_eia861_service_territory: 35616
+    bronze_noaa_storm_events: 288787
+    bronze_nws_zone_county: 33227
+    bronze_eia861_reliability: 4084
+    bronze_eia861_sales: 11796
+    bronze_eia861_service_territory: 47511
     bronze_oe417: 742
     bronze_noaa_state_codes: 69
     bronze_oe417_event_types: 43
     bronze_state_time_zones: 53
     bronze_storm_event_severity: 54
     bronze_ranking_exclusions: 0
-    silver_eia_state_customers: 168
-    silver_utility_reliability: 2908
-    silver_nws_zone_versions: 6
-    silver_nws_zone_county: 28209
-    silver_storm_event_details: 215282
-    silver_storm_events: 232414
-    silver_storm_events_unplaced: 8756
+    silver_eia_state_customers: 224
+    silver_utility_reliability: 3887
+    silver_nws_zone_versions: 7
+    silver_nws_zone_county: 33014
+    silver_storm_event_details: 288787
+    silver_storm_events: 310278
+    silver_storm_events_unplaced: 11307
     silver_oe417_rows: 738
     silver_oe417_locations: 1972
     silver_oe417: 738
-    dim_county_customers: 3063
-    silver_outages: 79598850
-    gold_collection_runs: 105216
-    gold_event_thresholds: 3063
-    gold_feed_dropouts: 19190
-    gold_outage_events: 446261
+    dim_county_customers: 3079
+    silver_outages: 108108220
+    gold_collection_runs: 140256
+    gold_event_thresholds: 3079
+    gold_event_reprocess_window: 3079
+    gold_feed_dropouts: 24059
+    gold_outage_events: 602479
     gold_state_coverage: 53
-    gold_event_storm_match: 446261
-    gold_unit_reliability: 9189
-    gold_county_reliability: 9159
-    gold_territory_unit_reliability: 30
-    gold_county_ranking_footnotes: 135
-    gold_state_reliability: 153
-    gold_territory_reliability: 6
-    gold_utility_reliability: 2204
-    gold_utility_reliability_other: 704
+    gold_event_storm_match: 602479
+    gold_unit_reliability: 12257
+    gold_county_reliability: 12217
+    gold_territory_unit_reliability: 40
+    gold_county_ranking_footnotes: 195
+    gold_state_reliability: 204
+    gold_territory_reliability: 8
+    gold_utility_reliability: 2963
+    gold_utility_reliability_other: 921
     gold_oe417_check: 738
 
 # Derived values (computed by scripts/pipeline_config.py, not set here):

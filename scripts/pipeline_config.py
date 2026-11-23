@@ -5,7 +5,8 @@ with its value formatted as a SQL literal: numbers as written, strings as is, li
 as a quoted comma-separated list. A placeholder that has no value stops the run.
 
 Derived values (not set in the file) are added by derive(): the volume path, the first and
-last year, the gap rule in 15-minute runs, percentage labels for comments, band labels.
+last year, the gap rule in 15-minute runs, percentage labels for comments, band labels, and
+whether the incremental load years cover every year (a full rebuild).
 
 Usage from other scripts:
     import pipeline_config
@@ -71,7 +72,17 @@ def validate(cfg: dict) -> None:
     years = _require(cfg, "years")
     if not years or any(not isinstance(y, int) for y in years) or sorted(set(years)) != years:
         raise ConfigError("years must be a sorted list of distinct integers")
+    load_years = _require(cfg, "incremental.load_years")
+    if (not load_years or any(not isinstance(y, int) for y in load_years)
+            or sorted(set(load_years)) != load_years or not set(load_years) <= set(years)):
+        raise ConfigError("incremental.load_years must be a sorted, non-empty subset of years")
+    lookback = number("incremental.lookback_days", 1)
+    if not isinstance(lookback, int):
+        raise ConfigError("incremental.lookback_days must be a whole number of days")
     number("denominator.mismatch_ratio", 1, lo_open=True)
+    base = _require(cfg, "denominator.base_years")
+    if not base or not set(base) <= set(years) or sorted(set(base)) != base:
+        raise ConfigError("denominator.base_years must be a sorted, non-empty subset of years")
     number("calibration.eia_year", 2000)
     number("calibration.state_ratio", 1, lo_open=True)
     number("calibration.peak_skip_ratio", 1, lo_open=True)
@@ -89,6 +100,7 @@ def validate(cfg: dict) -> None:
     number("coverage.min_customer_coverage", 0, 1)
     number("ranking.min_customers", 0)
     number("ranking.ranked_jurisdictions", 1)
+    number("ranking.max_share_without_denominator", 0, 1)
     number("storm_match.window_before_hours", 0)
     number("storm_match.window_after_hours", 0)
     number("oe417_check.start_window_hours", 0, lo_open=True)
@@ -113,6 +125,8 @@ def validate(cfg: dict) -> None:
     if not _require(cfg, "export.tables"):
         raise ConfigError("export.tables must list at least one table")
     number("quality.float_tolerance", 0, 1)
+    if not isinstance(number("quality.results_retention_days", 1), int):
+        raise ConfigError("quality.results_retention_days must be a whole number of days")
     if not all(isinstance(v, int) and v >= 0 for v in _require(cfg, "quality.expected_rows").values()):
         raise ConfigError("quality.expected_rows must map table names to non-negative integers")
 
@@ -123,6 +137,8 @@ def derive(cfg: dict) -> dict:
     p["volume_path"] = f"/Volumes/{p['catalog']}/{p['schema']}/{p['volume']}"
     years = cfg["years"]
     cfg["years"] = {"list": years, "first": years[0], "last": years[-1], "sql": ", ".join(map(str, years))}
+    inc = cfg["incremental"]
+    inc["full_rebuild"] = inc["load_years"] == years
     e["max_gap_runs"] = int(e["max_gap_hours"] * 60 // RUN_MINUTES)
     d["drop_below_pct"] = _pct(d["drop_below_share"])
     d["recovery_pct"] = _pct(d["recovery_share"])
@@ -131,6 +147,7 @@ def derive(cfg: dict) -> dict:
     cov["min_customer_coverage_pct"] = _pct(cov["min_customer_coverage"])
     r = cfg["ranking"]
     r["min_customers_label"] = f"{r['min_customers']:,}"
+    r["max_share_without_denominator_pct"] = _pct(r["max_share_without_denominator"])
     o = cfg["oe417_check"]
     lo, hi = o["band_edges"]
     o["band_low"], o["band_high"] = lo, hi
@@ -167,6 +184,11 @@ def get(path: str, overrides: dict[str, Any] | None = None) -> Any:
     return _require(load(), path)
 
 
+def load_years(overrides: dict[str, Any] | None = None) -> list[int]:
+    """EAGLE-I years whose Bronze table and Silver partition this run rebuilds (D56)."""
+    return list(get("incremental.load_years", overrides))
+
+
 def literal(value: Any) -> str:
     """A configuration value as SQL text."""
     if isinstance(value, bool):
@@ -174,6 +196,8 @@ def literal(value: Any) -> str:
     if isinstance(value, float):
         return repr(value)
     if isinstance(value, list):
+        if value and all(isinstance(v, int) and not isinstance(v, bool) for v in value):
+            return ", ".join(map(str, value))  # numbers stay numbers, e.g. year IN (2024, 2025)
         return _sql_list(value)
     if isinstance(value, dict):
         raise ConfigError("a placeholder must name a single value, not a section")

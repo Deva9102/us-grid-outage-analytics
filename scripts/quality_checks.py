@@ -8,9 +8,10 @@ gold_quality_results with the run timestamp; any failed check stops the run with
 Engines:
     databricks  runs on the SQL warehouse against workspace.outages and appends to
                 workspace.outages.gold_quality_results
-    duckdb      builds the whole pipeline locally from data/raw (as scripts/test_gold_analysis_duckdb.py
-                does), runs the same SQL translated by scripts/sql_dialect.py, keeps the results in a
-                DuckDB table and writes them to logs/quality_results_<timestamp>.csv
+    duckdb      builds the whole pipeline locally from data/raw with the real SQL files
+                (scripts/duckdb_pipeline.py, every year), runs the same checks translated by
+                scripts/sql_dialect.py, keeps the results in a DuckDB table and writes them to
+                logs/quality_results_<timestamp>.csv
 
 Usage:
     uv run python scripts/quality_checks.py --engine databricks
@@ -113,6 +114,13 @@ def results_table_sql() -> str:
 COMMENT 'Data quality gate results, one row per check per run (D48)'"""
 
 
+def retention_sql() -> str:
+    """Delete results older than quality.results_retention_days; runs at the end of each gate (D55)."""
+    table = pipeline_config.get("quality.results_table")
+    days = int(pipeline_config.get("quality.results_retention_days"))
+    return f"DELETE FROM {table} WHERE run_ts < CURRENT_TIMESTAMP - INTERVAL {days} DAYS"
+
+
 def insert_sql(run_ts: datetime, engine: str, rows: list[Row]) -> str:
     table = pipeline_config.get("quality.results_table")
     ts = f"TIMESTAMP '{run_ts:%Y-%m-%d %H:%M:%S}'"
@@ -146,6 +154,7 @@ def databricks_gate(w, warehouse_id: str, layers, log: RunLog | None, run_ts: da
     rows = run_layers(lambda sql: run_sql(w, warehouse_id, sql), layers, log)
     run_sql(w, warehouse_id, results_table_sql())
     run_sql(w, warehouse_id, insert_sql(run_ts, "databricks", rows))
+    run_sql(w, warehouse_id, retention_sql())
     raise_on_failure(rows)
     return rows
 
@@ -161,10 +170,13 @@ def duckdb_connection(db_file: Path | None, log: RunLog):
     if built:
         print(f"Reusing the pipeline built in {db_file}")
         return con
-    import test_gold_analysis_duckdb as analysis
+    import duckdb_pipeline
 
+    if db_file:
+        con.execute(f"SET temp_directory = '{db_file.with_suffix('.tmp')}'")
+    con.execute("SET preserve_insertion_order = false")
     with log.step("duckdb build") as s:
-        analysis.build(con)
+        duckdb_pipeline.run_all(con, REPO_ROOT / "data" / "raw")
         s.rows = con.execute("SELECT COUNT(*) FROM gold_outage_events").fetchone()[0]
     return con
 
@@ -175,6 +187,7 @@ def duckdb_gate(con, layers, log: RunLog, run_ts: datetime) -> list[Row]:
     rows = run_layers(lambda sql: con.execute(sql_dialect.to_duckdb(sql)).fetchall(), layers, log)
     con.execute(_duckdb_results_table())
     con.execute(insert_sql(run_ts, "duckdb", rows))
+    con.execute(retention_sql())
     path = write_csv(run_ts, "duckdb", rows)
     print(f"  results: {path.relative_to(REPO_ROOT)}")
     raise_on_failure(rows)

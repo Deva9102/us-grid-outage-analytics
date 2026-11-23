@@ -6,6 +6,9 @@
 -- bad value can never fail the load or be silently changed by schema inference.
 -- Each table adds source_file and loaded_at.
 --
+-- Incremental runs (D56): only the bronze_eaglei_<year> tables of incremental.load_years are
+-- rebuilt; the runners skip the statements of the other years, so those tables stay untouched.
+--
 -- The yearly EAGLE-I files are read as Parquet: the raw CSVs converted locally by
 -- DuckDB with every column as STRING, values unchanged (D20). scripts/run_databricks.py
 -- converts and uploads these files so the paths match:
@@ -67,6 +70,19 @@ FROM READ_FILES(
     schema => 'fips_code STRING, county STRING, state STRING, customers_out STRING, run_start_time STRING, total_customers STRING'
 );
 
+CREATE OR REPLACE TABLE bronze_eaglei_2025
+COMMENT 'EAGLE-I 2025 county outages, raw text columns (no total_customers, as in 2022)'
+AS
+SELECT
+    *,
+    _metadata.file_path AS source_file,
+    CURRENT_TIMESTAMP() AS loaded_at
+FROM READ_FILES(
+    '${project.volume_path}/eaglei_parquet/2025/',
+    format => 'parquet',
+    schema => 'fips_code STRING, county STRING, state STRING, customers_out STRING, run_start_time STRING'
+);
+
 
 -- -----------------------------------------------------------------------------
 -- Reference files used by Silver
@@ -106,11 +122,12 @@ FROM READ_FILES(
 
 -- -----------------------------------------------------------------------------
 -- Load check: row counts should match the local profile (docs/data_profile.md)
--- 2022: 25,796,465   2023: 26,101,051   2024: 27,701,334   MCC: 3,234   regions: 53
+-- 2022: 25,796,465   2023: 26,101,051   2024: 27,701,334   2025: 30,482,141   MCC: 3,234   regions: 53
 -- -----------------------------------------------------------------------------
 
 SELECT 'bronze_eaglei_2022' AS table_name, COUNT(*) AS row_count FROM bronze_eaglei_2022
 UNION ALL SELECT 'bronze_eaglei_2023', COUNT(*) FROM bronze_eaglei_2023
 UNION ALL SELECT 'bronze_eaglei_2024', COUNT(*) FROM bronze_eaglei_2024
+UNION ALL SELECT 'bronze_eaglei_2025', COUNT(*) FROM bronze_eaglei_2025
 UNION ALL SELECT 'bronze_eaglei_mcc', COUNT(*) FROM bronze_eaglei_mcc
 UNION ALL SELECT 'bronze_state_regions', COUNT(*) FROM bronze_state_regions;

@@ -28,33 +28,29 @@ import test_silver_duckdb as silver
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 GOLD_SQL = REPO_ROOT / "sql" / "databricks" / "03_gold_events.sql"
-GOLD_TABLES = ["gold_collection_runs", "gold_event_thresholds", "gold_feed_dropouts", "gold_outage_events"]
 
 def current_share() -> float:
     return float(pipeline_config.get("events.threshold_share"))
 
 
-def gold_statements(share: float | None = None) -> list[tuple[str, str]]:
-    """(table name, query) for each CREATE OR REPLACE TABLE ... AS <query>; in the file.
-
-    With share given, events.threshold_share is overridden for this run (used by the sensitivity test).
-    """
-    overrides = {"events.threshold_share": float(share)} if share is not None else None
-    text = pipeline_config.render(GOLD_SQL.read_text(), overrides)
-    import sql_split
-
-    found = sql_split.table_statements(text)  # D53
-    if [name for name, _ in found] != GOLD_TABLES:
-        raise SystemExit(f"Unexpected statements in {GOLD_SQL.name}: {[n for n, _ in found]}")
-    import sql_dialect
-
-    return [(name, sql_dialect.to_duckdb(query)) for name, query in found]
-
-
 def build_gold(con, share: float | None = None, skip: tuple[str, ...] = ()) -> None:
-    for name, query in gold_statements(share):
-        if name not in skip:
-            con.execute(f"CREATE OR REPLACE TABLE {name} AS {query}")
+    """Run 03_gold_events.sql as a full rebuild (D56) with scripts/duckdb_pipeline.py.
+
+    With share given, events.threshold_share is overridden for this run (used by the sensitivity
+    test). Tables in skip are not rebuilt (gold_collection_runs does not depend on the share).
+    """
+    import duckdb_pipeline
+    from run_databricks import CREATED
+    from sql_split import strip_comments
+
+    overrides = {"events.threshold_share": float(share)} if share is not None else {}
+    # The file keeps events before the reprocess window; a full rebuild keeps none, and events of
+    # an earlier build with another share must not stay behind.
+    for table in ("gold_outage_events", "gold_feed_dropouts"):
+        con.execute(f"DROP TABLE IF EXISTS {table}")
+    statements = [s for s in duckdb_pipeline.file_statements(GOLD_SQL.name, overrides)
+                  if not ((m := CREATED.match(strip_comments(s))) and m.group(1) in skip)]
+    duckdb_pipeline.run_statements(con, statements, REPO_ROOT / "data" / "raw", GOLD_SQL.name)
 
 
 def show(con, sql: str) -> None:
@@ -122,7 +118,7 @@ def synthetic_check() -> None:
                  UNION ALL SELECT * FROM d UNION ALL SELECT * FROM e UNION ALL SELECT * FROM f)
         SELECT r.fips_code, 'Test' AS county, 'Alabama' AS state, 'AL' AS state_abbr,
                'South' AS census_region, r.reading_time, r.customers_out,
-               r.customers_out > k.customers AS exceeds_customers
+               r.customers_out > k.customers AS exceeds_customers, YEAR(r.reading_time) AS year
         FROM rows r JOIN dim_county_customers k USING (fips_code)
     """)
     build_gold(con)

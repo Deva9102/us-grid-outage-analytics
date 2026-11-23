@@ -47,6 +47,7 @@ DIM = [
     ("49049", 328615, "total_customers_2024", False, 1.0, False, False),
     ("49057", 106115, "total_customers_2024", False, 1.0, False, False),
     ("51720", None, None, False, 1.0, False, False),
+    ("54061", 55481, "total_customers_2024", False, 1.0, False, False),
 ]
 
 
@@ -94,7 +95,7 @@ def test_silver_rows_per_year_and_overcounts(rows):
     """D4: readings above the county's customers are flagged, never changed (Harris in Beryl, Rich UT)."""
     assert rows("""
         SELECT year, COUNT(*), COUNT_IF(exceeds_customers) FROM silver_outages GROUP BY year ORDER BY year
-    """) == [(2022, 624, 0), (2023, 195, 0), (2024, 3965, 84)]
+    """) == [(2022, 624, 0), (2023, 195, 0), (2024, 4044, 84), (2025, 192, 0)]
     assert rows("""
         SELECT fips_code, COUNT(*), MAX(customers_out) FROM silver_outages WHERE exceeds_customers
         GROUP BY fips_code ORDER BY fips_code
@@ -138,6 +139,7 @@ def test_floor_and_dedupe_keep_the_highest_reading(synthetic_silver):
     con.execute("DELETE FROM bronze_eaglei_2022")
     con.execute("DELETE FROM bronze_eaglei_2024")
     con.execute("DELETE FROM bronze_eaglei_2023")
+    con.execute("DELETE FROM bronze_eaglei_2025")
     con.execute("""
         INSERT INTO bronze_eaglei_2023 (fips_code, county, state, "sum", run_start_time, source_file) VALUES
             ('1001', 'Autauga', 'Alabama', '120', '2023-03-22 20:30:00', 'a'),
@@ -165,12 +167,12 @@ def test_eia_state_customers_use_parts_a_c_d(rows):
 def test_storm_events_placed_in_counties(rows, one):
     """D28-D31: NOAA events in UTC, county and zone events placed in counties, water events unplaced."""
     assert rows("SELECT location_type, COUNT(DISTINCT event_id), COUNT(*) FROM silver_storm_events GROUP BY 1 ORDER BY 1") \
-        == [("C", 7, 7), ("Z", 44, 60)]
+        == [("C", 14, 14), ("Z", 44, 60)]
     assert rows("SELECT event_type, reason FROM silver_storm_events_unplaced") == [("Marine Thunderstorm Wind", "water")]
     assert one("SELECT COUNT(*) FROM (SELECT event_id, SUM(event_weight) AS w FROM silver_storm_events "
                "GROUP BY 1 HAVING ABS(w - 1) > 1e-9)") == 0
     assert rows("SELECT version, effective_from FROM silver_nws_zone_versions ORDER BY 2 DESC LIMIT 1") \
-        == [("bp05mr24", datetime(2024, 3, 5).date())]
+        == [("bp18mr25", datetime(2025, 3, 18).date())]
 
 
 def test_oe417_incidents_parsed_and_located(rows):

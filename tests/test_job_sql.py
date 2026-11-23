@@ -7,16 +7,22 @@ stop the job at the gate of the task that built the table.
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 import duckdb_pipeline
 import render_job_sql
 from conftest import FIXTURES
+from run_databricks import full_rebuild_overrides
 from sql_split import split_statements
 
 
-def fixture_overrides(expected_rows: dict[str, int]) -> dict[str, int]:
-    return {f"quality.expected_rows.{table}": n for table, n in expected_rows.items()}
+def fixture_overrides(expected_rows: dict[str, int]) -> dict:
+    """Fixture row counts, and every year loaded: the job builds a fresh connection from scratch."""
+    overrides: dict = {f"quality.expected_rows.{table}": n for table, n in expected_rows.items()}
+    overrides.update(full_rebuild_overrides())
+    return overrides
 
 
 def run_job(rendered: dict[str, str]):
@@ -52,8 +58,20 @@ def test_every_check_runs_once_and_every_gate_has_checks(job):
     rendered, *_ = job
     counts = render_job_sql.gate_check_counts(rendered)
     assert all(n >= 1 for n in counts.values())
-    # 16 statements of 90_quality_checks.sql plus one task row-count statement per gate.
-    assert sum(counts.values()) == 16 + len(render_job_sql.JOB_TASKS)
+    # 18 statements of 90_quality_checks.sql plus one task row-count statement per gate.
+    assert sum(counts.values()) == 18 + len(render_job_sql.JOB_TASKS)
+
+
+def test_the_configured_job_loads_only_the_new_year():
+    """D56: with incremental.load_years = [2025] the Bronze task builds only bronze_eaglei_2025,
+    Silver replaces only that partition, and every gate ends with the D55 retention delete."""
+    rendered = render_job_sql.render()
+    built = re.findall(r"CREATE OR REPLACE TABLE (bronze_eaglei_\d{4})\b", rendered["bronze.sql"])
+    assert built == ["bronze_eaglei_2025"]
+    assert "INSERT INTO silver_outages REPLACE WHERE year IN (2025)" in rendered["silver.sql"]
+    for task, _, _ in render_job_sql.JOB_TASKS:
+        assert re.search(r"DELETE FROM gold_quality_results WHERE run_ts < CURRENT_TIMESTAMP - INTERVAL 90 DAYS",
+                         rendered[f"{task}_gate.sql"]), task
 
 
 def test_rendered_sql_has_no_placeholders(job):
@@ -67,11 +85,12 @@ def test_job_build_passes_every_gate(job):
     assert len(done) == 2 * len(render_job_sql.JOB_TASKS)
     failed = con.execute("SELECT check_name FROM gold_quality_results WHERE NOT passed").fetchall()
     assert failed == []
-    # The 111 checks of D52 plus one row per table in the task row counts.
+    # The 115 checks (D52, plus D56: the 2025 Bronze count, two Gold counts, event numbering)
+    # plus one row per table in the task row counts.
     task_counts = con.execute(
         "SELECT COUNT(*) FROM gold_quality_results WHERE check_name LIKE 'task row count: %'").fetchone()[0]
     total = con.execute("SELECT COUNT(*) FROM gold_quality_results").fetchone()[0]
-    assert total - task_counts == 111
+    assert total - task_counts == 115
 
 
 def test_job_build_equals_the_pipeline_build(job, con):
