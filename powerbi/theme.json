@@ -1,0 +1,71 @@
+{
+  "name": "US Grid Outages",
+  "dataColors": [
+    "#2A78D6",
+    "#EB6834",
+    "#1BAF7A",
+    "#EDA100",
+    "#E87BA4",
+    "#008300",
+    "#6250D6",
+    "#E34948"
+  ],
+  "background": "#FFFFFF",
+  "secondaryBackground": "#F9F9F7",
+  "foreground": "#0B0B0B",
+  "foregroundNeutralSecondary": "#52514E",
+  "foregroundNeutralTertiary": "#898781",
+  "backgroundLight": "#F0EFEC",
+  "backgroundNeutral": "#C3C2B7",
+  "tableAccent": "#2A78D6",
+  "good": "#0CA30C",
+  "neutral": "#FAB219",
+  "bad": "#D03B3B",
+  "minimum": "#2A78D6",
+  "center": "#F0EFEC",
+  "maximum": "#E34948",
+  "null": "#B9B8B2",
+  "hyperlink": "#1C5CAB",
+  "visitedHyperlink": "#6250D6",
+  "textClasses": {
+    "callout": { "fontSize": 28, "fontFace": "Segoe UI Semibold", "color": "#0B0B0B" },
+    "title": { "fontSize": 12, "fontFace": "Segoe UI Semibold", "color": "#0B0B0B" },
+    "header": { "fontSize": 12, "fontFace": "Segoe UI Semibold", "color": "#0B0B0B" },
+    "label": { "fontSize": 10, "fontFace": "Segoe UI", "color": "#52514E" }
+  },
+  "visualStyles": {
+    "*": {
+      "*": {
+        "background": [{ "show": true, "color": { "solid": { "color": "#FFFFFF" } }, "transparency": 0 }],
+        "border": [{ "show": false }],
+        "dropShadow": [{ "show": false }],
+        "visualHeader": [{ "show": true }],
+        "title": [{ "show": true, "fontColor": { "solid": { "color": "#0B0B0B" } }, "fontSize": 12 }],
+        "valueAxis": [{
+          "gridlineShow": true,
+          "gridlineColor": { "solid": { "color": "#E1E0D9" } },
+          "gridlineThickness": 1,
+          "gridlineStyle": "solid",
+          "labelColor": { "solid": { "color": "#52514E" } },
+          "titleColor": { "solid": { "color": "#52514E" } }
+        }],
+        "categoryAxis": [{
+          "gridlineShow": false,
+          "labelColor": { "solid": { "color": "#52514E" } },
+          "titleColor": { "solid": { "color": "#52514E" } }
+        }],
+        "legend": [{ "show": true, "position": "Top", "labelColor": { "solid": { "color": "#52514E" } } }]
+      }
+    },
+    "page": {
+      "*": {
+        "background": [{ "color": { "solid": { "color": "#F9F9F7" } }, "transparency": 0 }]
+      }
+    },
+    "lineChart": {
+      "*": {
+        "lineStyles": [{ "strokeWidth": 2 }]
+      }
+    }
+  }
+}

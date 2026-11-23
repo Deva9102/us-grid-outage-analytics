@@ -34,15 +34,17 @@ read it, so I change values there and nowhere else.
 | `make job-deploy` | Renders the job SQL from `config/pipeline.yml` into `build/databricks/` and deploys the Databricks Job in `databricks.yml` (D54). |
 | `make job-run` | Runs the deployed job once and prints each task's result and duration. Deploying, repairs and failed gates are in `docs/runbook.md`. |
 | `make quality` | Runs every check in `sql/databricks/90_quality_checks.sql` and appends the results to `gold_quality_results`. `make quality ENGINE=duckdb` builds the pipeline locally and runs the same checks. |
-| `make export` | Writes the Gold tables to `data/gold_exports/` as CSV for Power BI, split by year when a file would exceed 50 MB. The CSVs are gitignored (D50). |
-| `make dbt-test-local` | Builds the pipeline on the fixture into a DuckDB file, runs `dbt build` on it (10 marts, 72 tests) and checks the marts against Gold. |
+| `make export` | Writes the dbt marts for Power BI (D70): the small tables as CSV to `data/gold_exports/summary/` (committed, with `manifest.json`), and `fct_outage_events` as Parquet to `data/gold_exports/release/` (gitignored). |
+| `make release-draft` | Uploads the Parquet export to a draft GitHub Release with the GitHub CLI, or prints the manual upload steps. I publish the draft by hand. |
+| `make export-gold` | Writes the Gold tables to `data/gold_exports/` as CSV, split by year above 50 MB. Gitignored (D50). |
+| `make dbt-test-local` | Builds the pipeline on the fixture into a DuckDB file, runs `dbt build` on it (14 marts and their tests) and checks the marts against Gold. |
 | `make dbt-build` | `dbt build` on Databricks: the star schema marts in `workspace.outages`, then the same check against Gold (D66). |
 | `make dbt-docs` | dbt docs for the fixture build, with the lineage graph (`docs/images/dbt_lineage.png`). |
 | `make analysis` | Runs `sql/analysis/` on the marts (Databricks by default), saves the results to `docs/analysis_results/`, renders the findings and case study, and redraws the charts. |
 | `make check-findings` | Reruns the analysis queries and confirms every number in the findings and case study still matches. |
 | `make charts` | Redraws the five charts in `docs/images/` from the saved results. |
 | `make data-dictionary` | Writes `docs/data_dictionary.md` from the dbt docs. |
-| `make all` | `setup`, `download`, `test`, `pipeline`, `quality`, `export` in order. |
+| `make all` | `setup`, `download`, `test`, `pipeline`, `quality`, `dbt-build`, `export` in order. |
 | `make clean` | Removes `logs/` and Python caches; raw data is kept. |
 
 Each run logs its steps (start time, duration, row counts) to `logs/` and prints a summary table.
@@ -59,8 +61,9 @@ Each run logs its steps (start time, duration, row counts) to `logs/` and prints
 
 `dbt/` turns the Gold tables into a star schema for Power BI and the later Snowflake copy (D66):
 five facts (`fct_outage_events`, `fct_state_reliability`, `fct_county_reliability`,
-`fct_territory_reliability`, `fct_utility_reliability`) and five dimensions (`dim_county`,
-`dim_state`, `dim_date`, `dim_storm_type`, `dim_utility`). The marts reshape Gold without
+`fct_territory_reliability`, `fct_utility_reliability`), three coverage facts
+(`fct_county_coverage`, `fct_published_coverage`, `fct_data_quality_index`, D67) and six dimensions
+(`dim_county`, `dim_state`, `dim_date`, `dim_year`, `dim_storm_type`, `dim_utility`). The marts reshape Gold without
 recomputing anything, and `scripts/reconcile_marts.py` checks that they match Gold exactly. An
 event counts in the year it starts. dbt has its own uv environment in `dbt/`; see `dbt/README.md`.
 
@@ -69,6 +72,16 @@ event counts in the year it starts. dbt has its own uv environment in `dbt/`; se
 ## Snowflake Star Schema
 
 ## Power BI Dashboard
+
+I build the dashboard by hand in Power BI Desktop from the marts. `make export` writes the small
+marts as CSV to `data/gold_exports/summary/` (committed) and `fct_outage_events` as Parquet for a
+GitHub Release (D70). The handoff is in `powerbi/`:
+- [data_model.md](powerbi/data_model.md): the tables to load, relationships, hidden columns and
+  how to load the Parquet file.
+- [measures.md](powerbi/measures.md): the DAX measures, each with the saved query result it must
+  match.
+- [dashboard_plan.md](powerbi/dashboard_plan.md): six pages, one question each.
+- [theme.json](powerbi/theme.json): a colour-blind-safe theme matching the charts.
 
 ## Key Findings
 

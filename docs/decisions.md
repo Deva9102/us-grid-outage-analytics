@@ -76,6 +76,7 @@ incrementally in D56). See `docs/data_profile.md`.
 | D67 | EAGLE-I coverage history and DQI loaded (2018-2022 only); county-year coverage from the readings | Bronze / Silver / Marts | 2026-11-23 |
 | D68 | Analysis layer: queries on the marts only, storm families, numbers in the docs checked against the queries | Analysis | 2026-11-23 |
 | D69 | Two portability fixes: DOUBLE instead of FLOAT in the marts, no doubled quote in a Gold literal | Gold / Marts | 2026-11-23 |
+| D70 | Power BI handoff: summary marts committed as CSV, events as Parquet on a draft GitHub Release; `dim_year` added | Marts / Export | 2026-11-23 |
 
 ---
 
@@ -2566,6 +2567,48 @@ see. The analysis results now match exactly.
 1. The DOUBLE cast changes no value in Gold; the mart columns now equal Gold exactly.
 2. The footnote text of 8 county-years in 2025 (the Connecticut planning regions) changes on
    Databricks; no rank changes.
+
+## D70. Power BI handoff: committed summary CSVs, events on a GitHub Release, a year dimension
+
+**What:**
+1. `make export` (`scripts/export_marts.py`) now writes the dbt marts, not the Gold tables. The
+   tables are listed in `mart_export` in `config/pipeline.yml`.
+   - The 13 small marts (all dimensions, state, county, territory and utility reliability, and the
+     three coverage marts) go to `data/gold_exports/summary/` as CSV and are committed. A
+     `.gitignore` exception un-ignores that folder.
+   - `fct_outage_events` goes to `data/gold_exports/release/` as Snappy Parquet. It is
+     gitignored and published as a GitHub Release asset.
+   - Rows are sorted on each table's key, so a rerun on unchanged marts writes byte-identical
+     files.
+   - `manifest.json` records rows, column types, bytes and SHA-256 per file.
+   - CSV conventions: UTF-8, `true`/`false` booleans, empty for NULL, UTC timestamps as
+     `YYYY-MM-DD HH:MM:SS`.
+   - The old Gold CSV export stays available as `make export-gold` (D50).
+2. `make release-draft` (`scripts/publish_release.py`) checks each Parquet file against the
+   manifest and writes the release notes.
+   - With the GitHub CLI, it creates a **draft** release on `Deva9102/us-grid-outage-analytics`, or
+     replaces the assets of an existing draft. It never publishes, and it refuses to touch a
+     published release.
+   - Without the CLI, it prints the exact manual steps for creating the draft in the browser.
+3. A new mart, `dim_year`, has one row per year any mart reports (2018-2025), with
+   `has_readings` and `has_published_coverage`. The year-grain facts join to it, and relationship
+   tests on each fact's year column enforce that.
+
+**Why:**
+- D50 deferred this split. The summary tables are small enough for git and change rarely, so the
+  dashboard can be rebuilt from a clone or from raw GitHub URLs without Databricks.
+- The event table is too large for git. A release keeps it versioned outside the history, and
+  the manifest hash ties each download to the commit that described it.
+- Draft-first means I review a release before it becomes public.
+- Without `dim_year`, the yearly facts could only reach a year slicer through `dim_date`, which
+  has many rows per year: a many-to-many relationship in Power BI. A one-row-per-year dimension
+  keeps every relationship many-to-one, with one filter path.
+
+**Rows affected:**
+- No Gold or mart values change. `dim_year` has 8 rows; dbt build has 113 passing nodes and the
+  marts still match Gold.
+- Export from Databricks: 13 summary CSVs (4.1 MB), the largest being `fct_county_reliability`
+  with 12,217 rows. `fct_outage_events` is 602,355 rows (25.6 MB Parquet).
 
 ---
 

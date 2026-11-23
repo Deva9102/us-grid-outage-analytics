@@ -6,11 +6,16 @@ exposures:
     type: dashboard
     maturity: low
     description: >
-      The planned Power BI dashboard, built by hand from these marts (powerbi/data_model.md,
-      powerbi/measures.md). Pages: top events and their storms (questions 1 and 4), state and
-      county rankings per 1,000 customers with footnotes (question 2), regional comparison
-      (question 3) and utility SAIDI / SAIFI with Eversource and National Grid against peers
-      (question 5). Years are event start years.
+      The Power BI dashboard I build by hand from these marts, exported by make export (D70):
+      the model in powerbi/data_model.md, the measures in powerbi/measures.md, the layout in
+      powerbi/dashboard_plan.md. Six pages, one question each: (1) US overview: how much power
+      was lost in the year and was it worse than the year before; (2) state and county map: which
+      places lose the most outage hours per 1,000 customers, with footnotes; (3) storms and
+      restoration: which storms cause the most outage time and how long each takes to restore;
+      (4) event drill-down: where, when, how big and which storm for one event; (5) utility
+      reliability benchmark: Eversource and National Grid SAIDI / SAIFI against same-size peers;
+      (6) data quality and coverage: coverage per year, footnotes, the D61 restatement. Years are
+      event start years.
     owner:
       name: Deva9102
     depends_on:
@@ -22,6 +27,7 @@ exposures:
       - ref('dim_county')
       - ref('dim_state')
       - ref('dim_date')
+      - ref('dim_year')
       - ref('dim_storm_type')
       - ref('dim_utility')
       - ref('fct_county_coverage')
