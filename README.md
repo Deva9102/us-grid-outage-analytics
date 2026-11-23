@@ -63,8 +63,14 @@ Each run logs its steps (start time, duration, row counts) to `logs/` and prints
 - 2025 (loaded incrementally, D56-D60): Connecticut reports in its nine planning regions instead of
   its eight counties from 2025-05-29. The planning regions have no customer denominator, so
   Connecticut's 2025 state and county rates are footnoted, not ranked (D60). 6.5% of the 2025
-  readings have an empty customers-out value and are dropped (D15). OE-417 reports for 2024 and
+  readings have an empty customers-out value and are dropped (D15); a 15-hour run of them splits the
+  2025-04-16 Puerto Rico blackout into two events per municipio and leaves about 10.8 M
+  customer-hours uncounted (D62, open). OE-417 reports for 2024 and
   2025 are not loaded (the official host is unreachable from my network, D25, D59), so the OE-417
   cross-check covers 2022-2023 only.
 
 ## Next Steps
+
+- Give Connecticut's nine planning regions customer denominators (Census planning-region
+  crosswalk) so Connecticut 2025 can be ranked instead of footnoted (D60).
+- Decide how empty 2025 readings are treated in events (D62, Q10).
