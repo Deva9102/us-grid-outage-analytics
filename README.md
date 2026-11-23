@@ -29,7 +29,7 @@ read it, so I change values there and nowhere else.
 | `make lint` | ruff on the Python, sqlfluff (Databricks dialect) on `sql/databricks/`. |
 | `make ci` | `lint` then `test`: the same checks GitHub Actions runs on every push and pull request. |
 | `make fixture` | Rebuilds `tests/fixtures/` from `data/raw/` (`scripts/build_test_fixture.py`). |
-| `make pipeline` | Converts and uploads the raw files, runs all SQL on Databricks, runs the quality gate after Bronze, Silver and Gold (a failed check stops the run), then verifies row counts and the top 10 events. |
+| `make pipeline` | Converts and uploads the raw files, runs all SQL on Databricks, runs the quality gate after Bronze, Silver and Gold (a failed check stops the run), then verifies row counts and the top 10 events. It loads only the years in `incremental.load_years` and leaves the others untouched (D56); `--full` rebuilds every year. |
 | `make cli` | Installs the pinned Databricks CLI into `.tools/` (checksum verified, no global install). |
 | `make job-deploy` | Renders the job SQL from `config/pipeline.yml` into `build/databricks/` and deploys the Databricks Job in `databricks.yml` (D54). |
 | `make job-run` | Runs the deployed job once and prints each task's result and duration. Deploying, repairs and failed gates are in `docs/runbook.md`. |
@@ -55,5 +55,16 @@ Each run logs its steps (start time, duration, row counts) to `logs/` and prints
 ## Key Findings
 
 ## Known Limitations
+
+- EAGLE-I misses outages shorter than its 15-minute collection run and is less reliable for small
+  and rural utilities. Earlier years have lower coverage, so I never report coverage growth as
+  outage growth.
+- EAGLE-I is county-level. Utility comparisons come only from EIA-861 SAIDI and SAIFI.
+- 2025 (loaded incrementally, D56-D60): Connecticut reports in its nine planning regions instead of
+  its eight counties from 2025-05-29. The planning regions have no customer denominator, so
+  Connecticut's 2025 state and county rates are footnoted, not ranked (D60). 6.5% of the 2025
+  readings have an empty customers-out value and are dropped (D15). OE-417 reports for 2024 and
+  2025 are not loaded (the official host is unreachable from my network, D25, D59), so the OE-417
+  cross-check covers 2022-2023 only.
 
 ## Next Steps

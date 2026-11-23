@@ -2,7 +2,8 @@
 
 Every cleaning decision for the pipeline, with the reason and the rows it touches.
 Row counts come from DuckDB runs against the raw EAGLE-I files
-(2022: 25,796,465 rows; 2023: 26,101,051; 2024: 27,701,334). See `docs/data_profile.md`.
+(2022: 25,796,465 rows; 2023: 26,101,051; 2024: 27,701,334; 2025: 30,482,141, added
+incrementally in D56). See `docs/data_profile.md`.
 
 | # | Decision | Layer | Date |
 |---|---|---|---|
@@ -60,6 +61,13 @@ Row counts come from DuckDB runs against the raw EAGLE-I files
 | D52 | States with unknown coverage are not ranked | Gold | 2026-11-22 |
 | D53 | One shared SQL statement splitter that ignores semicolons in comments and literals | All | 2026-11-22 |
 | D54 | Pipeline as a Databricks Job (Asset Bundle) of SQL tasks with a quality gate after each | All | 2026-11-22 |
+| D55 | Gate tasks never retry; quality results kept 90 days | All | 2026-11-22 |
+| D56 | Incremental loading: only the new year's Bronze table and Silver partition; events kept + rebuilt | All | 2026-11-22 |
+| D57 | Event reprocess window: 7-day lookback, events open at the cut rebuilt whole | Gold | 2026-11-22 |
+| D58 | 2025 does not change denominators; base years 2022-2024 | Silver | 2026-11-22 |
+| D59 | 2025 sources: EAGLE-I, NOAA, NWS, EIA-861 loaded; OE-417 2024-2025 missing | All | 2026-11-22 |
+| D60 | State-years with over 10% of customer-hours without a denominator are not ranked (CT 2025) | Gold | 2026-11-22 |
+| D61 | County reliability rows start at the county's first reported year | Gold | 2026-11-22 |
 
 ---
 
@@ -462,7 +470,8 @@ parse, or `customers_out` is not an integer.
 **Why:** Such a row cannot be placed in a county or a 15-minute slot, so it cannot feed any event
 or rate. The profile found none, so this is a guard for future files, not a cleanup.
 
-**Rows affected:** 0 in all three years (DuckDB, full data). FIPS codes padded: 0.
+**Rows affected:** 0 in all three years (DuckDB, full data). FIPS codes padded: 0. 2025: 1,972,650
+rows with an empty `customers_out` (D59).
 
 ## D16. State attributes from the state FIPS prefix
 
@@ -783,6 +792,7 @@ and only STRING columns.
 | 2022 | 1.1 GB | 63.0 MB | 5.6% | 25,796,465 |
 | 2023 | 1.1 GB | 62.6 MB | 5.5% | 26,101,051 |
 | 2024 | 1.3 GB | 29.2 MB | 2.1% | 27,701,334 |
+| 2025 | 1.3 GB | 67.5 MB | 5.0% | 30,482,141 (added in D56) |
 
 ## Databricks run
 
@@ -2041,6 +2051,226 @@ the pipeline files; every gate passes; and a wrong expected count for `gold_even
 stops the job at `gold_storm_match_gate`. One table is new in `workspace.outages`,
 `quality_gate_staging`, and each job run appends 154 rows to `gold_quality_results` (the 111
 checks plus one task row count for each of the 43 tables).
+
+---
+
+## D55. Gate tasks never retry; quality results kept for 90 days
+
+**What:**
+- In `databricks.yml` the five gate tasks (`*_gate`) have `max_retries: 0`. The five build tasks
+  keep one retry after a minute.
+- `gold_quality_results` keeps `quality.results_retention_days` (90) days of results. At the end of
+  every gate run (each job gate task, and `scripts/quality_checks.py` on Databricks and DuckDB) the
+  gate deletes rows with `run_ts` older than that:
+  `DELETE FROM gold_quality_results WHERE run_ts < CURRENT_TIMESTAMP - INTERVAL 90 DAYS`. In a job
+  gate it runs after the results are appended and before `raise_error()`, so it runs on failed gates
+  too.
+- The runners' safety check still refuses every DELETE except this exact statement on the results
+  table (`run_databricks.RETENTION`).
+- `docs/runbook.md` states that the job assumes the raw files are already in the volume and that
+  `make pipeline` (or its convert and upload steps) uploads them.
+
+**Why:** A build task can fail for a transient reason (warehouse start, a timeout), so one retry is
+cheap insurance. A gate failure is a finding about the data: the same checks on the same tables
+give the same answer, so a retry only delays the alert and spends quota. Each job run appends about
+160 result rows; with a daily schedule the table would grow without bound, and results older than
+a quarter are not used for diagnosis (the runbook query looks at the last day).
+
+**Rows affected:** none in the pipeline tables. `gold_quality_results` rows older than 90 days are
+deleted (none existed at the first run: the table dates from 2026-11-21).
+
+## D56. Incremental loading: only the new year's Bronze table and Silver partition
+
+**What:** `config/pipeline.yml` has `incremental.load_years` (now `[2025]`). A run loads only
+those EAGLE-I years and leaves every other year untouched:
+- **Bronze:** the runners (`run_databricks.for_this_run`, used by `make pipeline`, the job renderer
+  and the DuckDB runner) drop the `CREATE OR REPLACE TABLE bronze_eaglei_<year>` statements of the
+  other years, so `bronze_eaglei_2022` to `_2024` are not reloaded (their `loaded_at` is unchanged).
+- **Silver:** `silver_outages` is created once (`CREATE TABLE IF NOT EXISTS`, still partitioned by
+  year and state) and written with `INSERT INTO silver_outages REPLACE WHERE year IN (2025)`. Delta
+  replaces only those partitions in one transaction and rejects any row of another year. Each
+  Bronze branch of the union carries `WHERE <year> IN (load years)`, a constant filter, so tables
+  of years not loaded are never scanned. This is exact because every yearly file holds only
+  readings of its own year (checked: 0 rows outside the file year in 2022-2025), and the D7 floor
+  never moves a reading into another year.
+- **Gold events:** `gold_feed_dropouts` and `gold_outage_events` are created once and rewritten as
+  the rows before the reprocess window (kept as they are) plus the rows rebuilt from it (D57).
+  Rebuilt events continue each county's numbering after its last kept event, so event IDs never
+  change. `gold_outage_events_rebuilt` keeps the events the last run rebuilt;
+  `gold_event_reprocess_window` keeps where each county's window opened. The rebuilt table has no
+  expected row count (it depends on the run); a gate checks that every rebuilt event is in
+  `gold_outage_events` instead. The decimal columns are cast to the table's types (Databricks' own
+  types for those expressions) so kept and rebuilt rows never pass through another type.
+- **Downstream Gold** (coverage, storm match, reliability, OE-417 check) reads only Gold and the
+  small dimensions and is rebuilt in full: a few seconds, and it must reflect the changed events.
+- A full rebuild is the same code with every year in `load_years`
+  (`run_databricks.py --full`); then nothing is kept. The local test runner builds full by default.
+- New gate checks: Bronze row count of `bronze_eaglei_2025`; Gold row count of
+  `gold_event_reprocess_window`; event numbers 1..n in time order per county; rebuilt events
+  present in `gold_outage_events` (115 checks in all).
+
+**Why:** Rebuilding 108 million Silver rows to add one year spends most of the Free Edition quota on
+data that did not change, and rewriting old partitions risks changing published numbers. A
+partition `REPLACE WHERE` is atomic and idempotent, so a retry or the daily schedule reloading the
+current year gives the same rows. One code path for full and incremental runs means the incremental
+result can be proven equal to a full rebuild.
+
+**Rows affected (2025 load, 2026-11-22):**
+
+| | Before (2022-2024) | After |
+|---|---|---|
+| `silver_outages` | 79,598,850 | 108,108,220 (2025: 28,509,370) |
+| `gold_outage_events` | 446,261 | 602,479 |
+| `gold_feed_dropouts` | 19,190 | 24,059 |
+| `gold_collection_runs` | 105,216 | 140,256 |
+| `dim_county_customers` | 3,063 | 3,079 |
+
+**Proof:**
+- Silver 2022-2024 row counts and checksums (sum of a row hash over every column, per year) are
+  identical before and after, on Databricks (`xxhash64`) and in DuckDB (`hash`): 25,796,465 /
+  26,101,051 / 27,701,334 rows. The Bronze tables of 2022-2024 keep their original `loaded_at`.
+- In DuckDB on the full data, a 2022-2024 build followed by the incremental 2025 load equals a fresh
+  full 2022-2025 build row for row in all 26 Silver, dimension and Gold tables (0 differing rows).
+  The 2022-2024 build with the new SQL reproduces the previous verified counts exactly.
+- The fixture test `tests/test_incremental.py` does the same on the sample, and checks that a rerun
+  changes nothing.
+- Databricks matches DuckDB on every row count, every detail check and the top 10.
+
+**Run time:**
+
+| | DuckDB (local) | Databricks job |
+|---|---|---|
+| Incremental 2025 load | 25 s | 375 s (bronze 53, silver 78, gold_events 37, storm match 7, reliability 121, gates 76) |
+| Full rebuild | 61 s (2022-2025) | 485 s for the last full run of only 2022-2024 (bronze 109, silver 144, gold_events 43, reliability 104) |
+
+On Databricks Bronze and Silver take about half the time of the 3-year full run, with less data
+read; a full 4-year rebuild would be longer still. I did not run one on Databricks to save quota:
+the DuckDB proof shows it gives the same rows.
+
+## D57. Reprocess window for events: 7-day lookback, open events rebuilt whole
+
+**What:** Dropouts and events are rebuilt from a per-county `reprocess_from`:
+- the **cut** is `incremental.lookback_days` (7) before the first reading of the load years
+  (2025-01-01 00:00 UTC, so the cut is 2024-12-25 00:00);
+- a county with an event that ends after the cut is rebuilt from the start of its first such event
+  (`reprocess_from = LEAST(cut, that start)`), so an event open at the cut is rebuilt whole;
+- dropouts starting before the cut are kept; the rest are rebuilt from the readings from the run
+  before the cut on (the drop rule compares with the previous run).
+
+**Why 7 days:** The window has to cover everything a new reading can change: the 1-hour event gap
+(D17), the 5-run dropout recovery (D19), and the gap measured in collected runs, which skips
+nationwide feed gaps (D3; the longest is 9 hours). Reopening events that end after the cut makes
+the result exact for any event length; the lookback only has to be longer than any gap that can
+still join two readings, and 7 days is far above that while costing one week of 2024 readings
+(under 2% of the data read). Without the reopen rule a fixed lookback would split any event that
+started before it.
+
+**Fixture test:** `tests/fixtures/` gains window W6 (2024-12-31 12:00 to 2025-01-02 00:00) with the
+real readings of Monongalia WV, whose outage runs from 2024-12-31 19:30 into 2025, and Harris TX
+(which reports in every slot, so the fixture's collection grid is real). Before 2025 is loaded the
+event ends at the last 2024 reading (18 readings); after the incremental load it is the same event
+`54061-00001`, with 114 readings, still counted in 2024.
+
+**Rows affected (full data):** 17 counties had an event open at the cut, so their window opened
+earlier (earliest 2024-12-24 15:45). 158,948 events were rebuilt. 57 events that started in 2024
+now continue into 2025 and are longer; in the 2022-2024 build they ended at the last 2024 reading.
+The largest is `28157-00227` Wilkinson MS, 2024-12-28 22:15 to 2025-01-03 02:45 (258,629
+customer-hours). These 57 change 2024 customer-hours for 57 counties (events count in their start
+year, D38) and move the 2024 rates of 19 states slightly; no state's 2024 rank changes. All other
+2022-2024 events are identical. One more 2024 event matches a storm (18,448 to 18,449): one of the
+longer events now overlaps a storm window.
+
+## D58. 2025 does not change the denominators (D13 stays one denominator per county)
+
+**What:** `dim_county_customers` keeps the D13 rule with 2022-2024 as the denominator base years
+(`denominator.base_years`): the D21 state totals and the D35 peak floors use only counties and
+readings of those years. A county first reported in 2025 gets its D13 value (MCC if it has one,
+else none) and is not calibrated. The D35 quality check reads base-year peaks only (it failed on
+the first Databricks run, with 5 calibrated counties whose 2025 peak exceeds their floor, before I
+aligned it). A 2025 reading above a county's denominator is flagged and capped as any other (D4:
+3,415 such rows in 2025).
+
+**Why:** The 2025 EAGLE-I file has no `total_customers` column (five columns, like 2022), so there
+is no 2025 customer count to switch to. The levers 2025 would offer (2025 peaks for D35, 2025
+counties in the D21 totals, EIA-861 2025 for calibration) all rewrite earlier years: under D13 a
+county's one denominator is used in every year. I measured that alternative in DuckDB:
+- 237 counties in all 5 calibrated states would change denominator (Missouri 115, South Dakota
+  66, South Carolina 39, Massachusetts 13, Hawaii 4); median change 0.7%, largest 109% (South
+  Dakota would no longer be calibrated, because EIA-861 2025 grew past the 1.25 ratio).
+- Every 2022-2024 rate in those states would move, and 25 published `exceeds_customers` flags would
+  flip (21 in 2022, 4 in 2024).
+
+Rates that change when a year is added would break year-over-year comparison, the point of D13.
+Recommendation and choice: keep the base years 2022-2024; revisit only in a deliberate full
+rebuild, recorded as its own decision.
+
+**Rows affected:** 16 new rows in `dim_county_customers` (3,063 to 3,079), none of the existing
+rows changed: 7 counties first reported in 2025 with an MCC denominator (Clark, Ford, Kiowa and
+Meade KS; Johnson TN; Sabine TX; Klickitat WA) and Connecticut's 9 planning regions with none
+(D59, D60).
+
+## D59. 2025 sources: what is published, what is missing
+
+**What and rows affected:**
+- **EAGLE-I 2025** (figshare dataset version 4, the version already pinned): 30,482,141 rows,
+  all dated 2025. Converted to Parquet (D20: 67.5 MB). In Silver, 1,972,650 rows (6.5%) are
+  dropped by D15 because `customers_out` is empty; 2022-2024 had none. They are spread over 3,027
+  counties (most in Illinois, Virginia and South Carolina) and treated as missing readings (D3),
+  which a single gap does not split (the event gap is counted in runs). 121 more rows are
+  removed by the D7 dedupe after flooring off-grid times. Silver 2025: 28,509,370 rows.
+- **Connecticut planning regions:** from 2025-05-29 EAGLE-I reports Connecticut by its nine
+  planning regions (FIPS 09110 to 09190, the Census county equivalents since 2022) instead of its
+  eight counties. MCC has no row for them, so they have no denominator (D9); see D60.
+- **NOAA Storm Events 2025:** `StormEvents_details-ftp_v1.0_d2025_c20261119.csv.gz`, 73,505 events.
+  Storm matching covers 2025 (17,742 matched events).
+- **NWS zone-county file:** `bp18mr25` (effective 2025-03-18, in force until `bp16ap26`) added to
+  `scripts/download_nws_zone_county.py`; 7 versions now.
+- **EIA-861 2025:** published and loaded. Utility rankings include 2025. Three 2025 reliability rows
+  carry no reporting standard (`not reported`); like any non-IEEE row they are in neither utility
+  table. One 2025 utility (19162) is flagged by the D39 repeated-values rule and not ranked.
+  `calibration.eia_year` stays 2024 (D58).
+- **OE-417 2024 and 2025: not available.** As in D25, the official host is IPv6-only and has no
+  archived copy; `scripts/download_oe417.py` lists both as manual downloads. The OE-417 check (D40)
+  covers 2022-2023 only, and findings say so. Dropping the files into `data/raw/oe417/<year>/` adds
+  them with no code change.
+
+## D60. A state-year mostly without denominators is footnoted, not ranked
+
+**What:** In `gold_state_reliability`, a state-year with more than
+`ranking.max_share_without_denominator` (10%) of its customer-hours in reporting units without a
+denominator is footnoted ("over 10% of customer-hours in units without a denominator (D60)") and
+not ranked. In `gold_county_reliability` the counties of such a state-year are footnoted the
+same way.
+
+**Why:** A state's rate divides the customer-hours of units with a denominator by their customers
+(D9). Connecticut's 2025 hours after May 29 sit in planning regions without one, so its 2025 rate
+would count about five months of outages against a full year of customers and rank Connecticut
+far too reliable. Its eight counties' 2025 rates have the same gap.
+
+**Rows affected:** only Connecticut 2025: 68% of its 2025 customer-hours are in planning regions.
+No other state-year in 2022-2025 is above 0.5%, so no other rank changes. 1 state-year and 8
+county-years footnoted. A proper fix needs denominators for the planning regions (for example from
+a town-level crosswalk); that is an open question for me to decide.
+
+## D61. A county has reliability rows only from its first reported year
+
+**What:** `gold_unit_reliability` gives each county a row for every year from the first year
+EAGLE-I reports it (`MIN(year)` in `silver_outages`), not for every year in the data. Quiet years
+after that still count as zero.
+
+**Why:** Before, every county got a row in every year, so a county first reported in 2025 would
+have appeared in 2022-2024 as a county with zero outage hours and lowered its state's rate. That is
+coverage growth reported as reliability, which this project must never do. The same rule applies
+to the counties already first reported in 2023 or 2024.
+
+**Rows affected:** 16 county-years from 2025 counties are never created. In 2022-2024, 10
+county-years that were coverage-gap zeros are removed: 2022 Chugach AK, Lee, Prentiss and
+Tishomingo MS, Garfield MT, Okanogan WA; 2023 Chugach AK, Lee and Tishomingo MS, Okanogan WA.
+Ranked counties: 2022 3,009 to 3,004; 2023 3,009 to 3,006; 2024 unchanged at 3,006. State rates
+rise where those counties had diluted them: Mississippi 2022 4,451 to 4,666 hours per 1,000
+customers (rank 18 to 17), 2023 8,820 to 9,169 (11 to 10); Washington 2022 rank 14 to 13; Montana
+2022 and Washington 2023 by under 1%. Arkansas and Kentucky 2022 and Hawaii 2023 move down one rank
+as a result. No rank 1 changes.
 
 ---
 
