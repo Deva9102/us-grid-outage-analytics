@@ -8,7 +8,7 @@ DUCKDB_ARG := $(if $(DUCKDB_FILE),--duckdb-file $(DUCKDB_FILE),)
 
 .PHONY: help setup download profile test test-slow lint ci fixture pipeline quality export all clean \
         cli job-render job-validate job-deploy job-run migrate \
-        dbt-build dbt-test-local dbt-docs
+        dbt-build dbt-test-local dbt-docs analysis charts check-findings data-dictionary
 
 help:
 	@echo "make setup      install the uv environment and validate config/pipeline.yml"
@@ -30,6 +30,10 @@ help:
 	@echo "make dbt-build  dbt build on Databricks (marts in workspace.outages), then check them against Gold"
 	@echo "make dbt-test-local  dbt build on the fixture in DuckDB, then check the marts against Gold"
 	@echo "make dbt-docs   dbt docs for the fixture build (dbt/target/index.html)"
+	@echo "make analysis   run sql/analysis/ on the marts, render docs/findings.md and docs/case_study.md, draw the charts"
+	@echo "make charts     redraw the five charts in docs/images/ from docs/analysis_results/"
+	@echo "make check-findings  rerun the analysis queries and confirm every number in the docs still matches"
+	@echo "make data-dictionary  write docs/data_dictionary.md from the dbt docs"
 	@echo "make all        setup, download, test, pipeline, quality, export"
 	@echo "make clean      remove logs and Python caches (raw data is kept)"
 
@@ -112,6 +116,25 @@ dbt-test-local:
 
 dbt-docs: dbt-test-local
 	$(DBTRUN) docs generate --target duckdb
+
+# Analysis on the dbt marts (D68). ENGINE=databricks (default) or duckdb with DUCKDB_FILE.
+AENGINE ?= databricks
+AARGS := --engine $(AENGINE) $(if $(DUCKDB_FILE),--duckdb-file $(DUCKDB_FILE),)
+
+analysis:
+	$(PY) scripts/analysis.py run $(AARGS)
+	$(PY) scripts/analysis.py render
+	$(PY) scripts/charts.py
+
+charts:
+	$(PY) scripts/charts.py
+
+check-findings:
+	$(PY) scripts/analysis.py check $(AARGS)
+
+data-dictionary:
+	$(DBTRUN) docs generate --target databricks
+	$(PY) scripts/data_dictionary.py
 
 all: setup download test pipeline quality export
 

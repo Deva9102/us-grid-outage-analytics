@@ -23,6 +23,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "matplotlib>=3.11.2",
     "pytest>=9.2.0",
     "ruff>=0.17.6",
     "sqlfluff>=4.5.0",
@@ -43,6 +44,6 @@ src = ["scripts", "tests"]
 select = ["E", "F", "W", "I", "UP", "B", "SIM"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["pipeline_config", "pipeline_log", "sql_dialect", "duckdb_pipeline", "run_databricks", "quality_checks",
+known-first-party = ["pipeline_config", "analysis", "pipeline_log", "sql_dialect", "duckdb_pipeline", "run_databricks", "quality_checks",
                      "download_utils", "raw_convert", "census_regions", "noaa_state_codes", "storm_event_severity",
                      "sqlfluff_config", "test_silver_duckdb", "test_gold_events_duckdb", "conftest"]
