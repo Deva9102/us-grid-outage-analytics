@@ -7,7 +7,8 @@ DUCKDB_FILE ?=
 DUCKDB_ARG := $(if $(DUCKDB_FILE),--duckdb-file $(DUCKDB_FILE),)
 
 .PHONY: help setup download profile test test-slow lint ci fixture pipeline quality export all clean \
-        cli job-render job-validate job-deploy job-run migrate
+        cli job-render job-validate job-deploy job-run migrate \
+        dbt-build dbt-test-local dbt-docs
 
 help:
 	@echo "make setup      install the uv environment and validate config/pipeline.yml"
@@ -26,6 +27,9 @@ help:
 	@echo "make job-deploy render, validate and deploy the Databricks Job (databricks.yml)"
 	@echo "make migrate    add new columns to tables an earlier run created (D64)"
 	@echo "make job-run    migrate, then run the deployed job once and wait for it (TASK=<key> re-runs one task)"
+	@echo "make dbt-build  dbt build on Databricks (marts in workspace.outages), then check them against Gold"
+	@echo "make dbt-test-local  dbt build on the fixture in DuckDB, then check the marts against Gold"
+	@echo "make dbt-docs   dbt docs for the fixture build (dbt/target/index.html)"
 	@echo "make all        setup, download, test, pipeline, quality, export"
 	@echo "make clean      remove logs and Python caches (raw data is kept)"
 
@@ -93,6 +97,21 @@ migrate:
 
 job-run: migrate
 	$(PY) scripts/job_run.py $(if $(TASK),--task $(TASK),)
+
+# dbt star schema (D66). dbt runs in its own uv environment, dbt/pyproject.toml.
+DBTRUN := cd dbt && uv run python run_dbt.py
+
+dbt-build:
+	$(DBTRUN) build --target databricks
+	$(PY) scripts/reconcile_marts.py --engine databricks
+
+dbt-test-local:
+	$(PY) scripts/build_duckdb.py
+	$(DBTRUN) build --target duckdb
+	$(PY) scripts/reconcile_marts.py --engine duckdb
+
+dbt-docs: dbt-test-local
+	$(DBTRUN) docs generate --target duckdb
 
 all: setup download test pipeline quality export
 

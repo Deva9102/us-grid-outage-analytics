@@ -32,3 +32,14 @@ jobs:
 
       - name: pytest (fast suite on tests/fixtures)
         run: uv run pytest -q
+
+      # dbt has its own environment (dbt/pyproject.toml, D66); the fixture build needs no secrets.
+      - name: dbt parse and build on the fixture (DuckDB)
+        run: |
+          uv run python scripts/build_duckdb.py
+          cd dbt
+          uv sync --locked
+          uv run python run_dbt.py parse --target duckdb
+          uv run python run_dbt.py build --target duckdb
+          cd ..
+          uv run python scripts/reconcile_marts.py --engine duckdb
