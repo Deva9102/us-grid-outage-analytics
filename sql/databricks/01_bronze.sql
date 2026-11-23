@@ -104,6 +104,37 @@ FROM READ_FILES(
     schema => 'County_FIPS STRING, Customers STRING'
 );
 
+-- coverage_history.csv: share of each state's customers EAGLE-I covered, per year (D67). The
+-- release's file stops at 2022; dates are written m/d/yy.
+CREATE OR REPLACE TABLE bronze_eaglei_coverage_history
+COMMENT 'EAGLE-I published customer coverage per state and year (coverage_history.csv), raw text columns'
+AS
+SELECT
+    *,
+    _metadata.file_path AS source_file,
+    CURRENT_TIMESTAMP() AS loaded_at
+FROM READ_FILES(
+    '${project.volume_path}/eaglei/metadata/coverage_history.csv',
+    format => 'csv',
+    header => TRUE,
+    schema => 'year STRING, state STRING, total_customers STRING, min_covered STRING, max_covered STRING, min_pct_covered STRING, max_pct_covered STRING'
+);
+
+-- DQI.csv: EAGLE-I data quality index per FEMA region and year (D67). Also stops at 2022.
+CREATE OR REPLACE TABLE bronze_eaglei_dqi
+COMMENT 'EAGLE-I data quality index per FEMA region and year (DQI.csv), raw text columns'
+AS
+SELECT
+    *,
+    _metadata.file_path AS source_file,
+    CURRENT_TIMESTAMP() AS loaded_at
+FROM READ_FILES(
+    '${project.volume_path}/eaglei/metadata/DQI.csv',
+    format => 'csv',
+    header => TRUE,
+    schema => 'fema STRING, year STRING, success_rate STRING, percent_enabled STRING, spatial_precision STRING, cust_coverage STRING, max_covered STRING, total_customers STRING, DQI STRING'  -- noqa: LT05
+);
+
 -- Built by scripts/census_regions.py (D8, D16).
 CREATE OR REPLACE TABLE bronze_state_regions
 COMMENT 'State FIPS to Census region, Census division and FEMA region'
@@ -130,4 +161,6 @@ UNION ALL SELECT 'bronze_eaglei_2023', COUNT(*) FROM bronze_eaglei_2023
 UNION ALL SELECT 'bronze_eaglei_2024', COUNT(*) FROM bronze_eaglei_2024
 UNION ALL SELECT 'bronze_eaglei_2025', COUNT(*) FROM bronze_eaglei_2025
 UNION ALL SELECT 'bronze_eaglei_mcc', COUNT(*) FROM bronze_eaglei_mcc
+UNION ALL SELECT 'bronze_eaglei_coverage_history', COUNT(*) FROM bronze_eaglei_coverage_history
+UNION ALL SELECT 'bronze_eaglei_dqi', COUNT(*) FROM bronze_eaglei_dqi
 UNION ALL SELECT 'bronze_state_regions', COUNT(*) FROM bronze_state_regions;

@@ -6,6 +6,8 @@ bronze_eaglei_2023: 195
 bronze_eaglei_2024: 4044
 bronze_eaglei_2025: 1200
 bronze_eaglei_mcc: 16
+bronze_eaglei_coverage_history: 280
+bronze_eaglei_dqi: 50
 bronze_state_regions: 53
 bronze_noaa_storm_events: 59
 bronze_nws_zone_county: 305
@@ -28,6 +30,8 @@ silver_storm_events_unplaced: 1
 silver_oe417_rows: 4
 silver_oe417_locations: 7
 silver_oe417: 4
+silver_eaglei_coverage_history: 280
+silver_eaglei_dqi: 50
 dim_county_customers: 16
 silver_outages: 5720
 silver_empty_readings: 343

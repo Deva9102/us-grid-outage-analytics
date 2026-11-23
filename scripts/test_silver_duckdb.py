@@ -49,6 +49,11 @@ def bronze(con: duckdb.DuckDBPyConnection, month_filter: str | None) -> None:
         """)
     mcc = (RAW / "eaglei" / "metadata" / "MCC.csv").as_posix()
     con.execute(f"CREATE OR REPLACE VIEW bronze_eaglei_mcc AS SELECT * FROM read_csv('{mcc}', all_varchar = true)")
+    # The coverage metadata files (D67), read by 02_silver_sources.sql.
+    for name, file in (("bronze_eaglei_coverage_history", "coverage_history.csv"), ("bronze_eaglei_dqi", "DQI.csv")):
+        path = (RAW / "eaglei" / "metadata" / file).as_posix()
+        con.execute(f"CREATE OR REPLACE VIEW {name} AS SELECT *, '{path}' AS source_file "
+                    f"FROM read_csv('{path}', all_varchar = true)")
     con.execute(f"""
         CREATE OR REPLACE VIEW bronze_state_regions AS
         SELECT * FROM read_csv('{REGIONS_CSV.as_posix()}', all_varchar = true)

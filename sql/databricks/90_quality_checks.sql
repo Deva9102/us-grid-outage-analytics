@@ -26,6 +26,8 @@ counts AS (
     UNION ALL SELECT 'bronze_eaglei_2024', COUNT(*), ${quality.expected_rows.bronze_eaglei_2024} FROM bronze_eaglei_2024
     UNION ALL SELECT 'bronze_eaglei_2025', COUNT(*), ${quality.expected_rows.bronze_eaglei_2025} FROM bronze_eaglei_2025
     UNION ALL SELECT 'bronze_eaglei_mcc', COUNT(*), ${quality.expected_rows.bronze_eaglei_mcc} FROM bronze_eaglei_mcc
+    UNION ALL SELECT 'bronze_eaglei_coverage_history', COUNT(*), ${quality.expected_rows.bronze_eaglei_coverage_history} FROM bronze_eaglei_coverage_history
+    UNION ALL SELECT 'bronze_eaglei_dqi', COUNT(*), ${quality.expected_rows.bronze_eaglei_dqi} FROM bronze_eaglei_dqi
     UNION ALL SELECT 'bronze_state_regions', COUNT(*), ${quality.expected_rows.bronze_state_regions} FROM bronze_state_regions
     UNION ALL SELECT 'bronze_noaa_storm_events', COUNT(*), ${quality.expected_rows.bronze_noaa_storm_events} FROM bronze_noaa_storm_events
     UNION ALL SELECT 'bronze_nws_zone_county', COUNT(*), ${quality.expected_rows.bronze_nws_zone_county} FROM bronze_nws_zone_county
@@ -75,6 +77,8 @@ counts AS (
     UNION ALL SELECT 'silver_oe417_rows', COUNT(*), ${quality.expected_rows.silver_oe417_rows} FROM silver_oe417_rows
     UNION ALL SELECT 'silver_oe417_locations', COUNT(*), ${quality.expected_rows.silver_oe417_locations} FROM silver_oe417_locations
     UNION ALL SELECT 'silver_oe417', COUNT(*), ${quality.expected_rows.silver_oe417} FROM silver_oe417
+    UNION ALL SELECT 'silver_eaglei_coverage_history', COUNT(*), ${quality.expected_rows.silver_eaglei_coverage_history} FROM silver_eaglei_coverage_history
+    UNION ALL SELECT 'silver_eaglei_dqi', COUNT(*), ${quality.expected_rows.silver_eaglei_dqi} FROM silver_eaglei_dqi
     UNION ALL SELECT 'dim_county_customers', COUNT(*), ${quality.expected_rows.dim_county_customers} FROM dim_county_customers
     UNION ALL SELECT 'silver_outages', COUNT(*), ${quality.expected_rows.silver_outages} FROM silver_outages
     UNION ALL SELECT 'silver_empty_readings', COUNT(*), ${quality.expected_rows.silver_empty_readings} FROM silver_empty_readings

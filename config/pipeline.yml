@@ -118,6 +118,8 @@ quality:                        # sql/databricks/90_quality_checks.sql (D48)
     bronze_eaglei_2024: 27701334
     bronze_eaglei_2025: 30482141
     bronze_eaglei_mcc: 3234
+    bronze_eaglei_coverage_history: 280
+    bronze_eaglei_dqi: 50
     bronze_state_regions: 53
     bronze_noaa_storm_events: 288787
     bronze_nws_zone_county: 33227
@@ -140,6 +142,8 @@ quality:                        # sql/databricks/90_quality_checks.sql (D48)
     silver_oe417_rows: 738
     silver_oe417_locations: 1972
     silver_oe417: 738
+    silver_eaglei_coverage_history: 280
+    silver_eaglei_dqi: 50
     dim_county_customers: 3079
     silver_outages: 108108220
     silver_empty_readings: 1972650

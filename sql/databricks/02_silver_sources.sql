@@ -13,6 +13,8 @@
 --   silver_oe417_rows              one row per OE-417 incident, parsed fields (D33)
 --   silver_oe417_locations         states and counties named per incident (D33)
 --   silver_oe417                   one row per OE-417 incident with UTC times and locations (D24, D33)
+--   silver_eaglei_coverage_history EAGLE-I published coverage per state and year, 2018-2022 (D67)
+--   silver_eaglei_dqi              EAGLE-I data quality index per FEMA region and year, 2018-2022 (D67)
 --
 -- scripts/test_sources_duckdb.py runs these statements in DuckDB. Keep each statement
 -- in the form CREATE OR REPLACE TABLE <name> COMMENT '...' AS <query>;
@@ -584,6 +586,49 @@ LEFT JOIN bronze_oe417_event_types AS t ON t.event_type_key = r.event_type_key;
 
 
 -- -----------------------------------------------------------------------------
+-- EAGLE-I coverage metadata (D67)
+-- The release publishes coverage and a data quality index only up to 2022; later years are
+-- measured from the readings themselves (dbt mart fct_county_coverage).
+-- -----------------------------------------------------------------------------
+
+CREATE OR REPLACE TABLE silver_eaglei_coverage_history
+COMMENT 'EAGLE-I published customer coverage per state and year (D67)'
+AS
+-- The year is the last two digits of the m/d/yy date; shares are fractions of 1.
+SELECT
+    2000 + CAST(RIGHT(TRIM(year), 2) AS INT)         AS year,
+    TRIM(state)                                      AS state_abbr,
+    CAST(total_customers AS BIGINT)                  AS total_customers,
+    CAST(min_covered AS BIGINT)                      AS min_covered,
+    CAST(max_covered AS BIGINT)                      AS max_covered,
+    CAST(min_pct_covered AS DOUBLE)                  AS min_share_covered,
+    CAST(max_pct_covered AS DOUBLE)                  AS max_share_covered,
+    source_file
+FROM bronze_eaglei_coverage_history;
+
+CREATE OR REPLACE TABLE silver_eaglei_dqi
+COMMENT 'EAGLE-I data quality index per FEMA region and year (D67)'
+AS
+-- FEMA regions are numbered 1-10 here and written I-X in the region lookup (D8); percentages
+-- stay on the 0-100 scale of the file.
+SELECT
+    CASE CAST(fema AS INT)
+        WHEN 1 THEN 'I' WHEN 2 THEN 'II' WHEN 3 THEN 'III' WHEN 4 THEN 'IV' WHEN 5 THEN 'V'
+        WHEN 6 THEN 'VI' WHEN 7 THEN 'VII' WHEN 8 THEN 'VIII' WHEN 9 THEN 'IX' WHEN 10 THEN 'X'
+    END                                              AS fema_region,
+    CAST(year AS INT)                                AS year,
+    CAST(success_rate AS DOUBLE)                     AS success_rate_pct,
+    CAST(percent_enabled AS DOUBLE)                  AS percent_enabled,
+    CAST(spatial_precision AS DOUBLE)                AS spatial_precision_pct,
+    CAST(cust_coverage AS DOUBLE)                    AS customer_coverage_pct,
+    CAST(max_covered AS BIGINT)                      AS max_covered,
+    CAST(total_customers AS BIGINT)                  AS total_customers,
+    CAST(DQI AS DOUBLE)                              AS dqi,
+    source_file
+FROM bronze_eaglei_dqi;
+
+
+-- -----------------------------------------------------------------------------
 -- Checks (expected values: scripts/run_databricks.py)
 -- -----------------------------------------------------------------------------
 
@@ -593,4 +638,6 @@ UNION ALL SELECT 'silver_storm_events_unplaced', COUNT(*) FROM silver_storm_even
 UNION ALL SELECT 'silver_utility_reliability', COUNT(*) FROM silver_utility_reliability
 UNION ALL SELECT 'silver_eia_state_customers', COUNT(*) FROM silver_eia_state_customers
 UNION ALL SELECT 'silver_oe417', COUNT(*) FROM silver_oe417
-UNION ALL SELECT 'silver_oe417_locations', COUNT(*) FROM silver_oe417_locations;
+UNION ALL SELECT 'silver_oe417_locations', COUNT(*) FROM silver_oe417_locations
+UNION ALL SELECT 'silver_eaglei_coverage_history', COUNT(*) FROM silver_eaglei_coverage_history
+UNION ALL SELECT 'silver_eaglei_dqi', COUNT(*) FROM silver_eaglei_dqi;

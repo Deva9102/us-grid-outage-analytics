@@ -13,6 +13,7 @@ synthetic rows inside the tests, never in these files. Design and selection: `do
 |---|---|---|---|
 | `eaglei/<year>/` | EAGLE-I county outages | 624 / 195 / 4,044 / 1,200 | 13 counties in 5 windows (below), Monongalia WV and Harris in a sixth, Ponce PR and Harris in a seventh, plus one reading each for Kalawao HI and Norton city VA |
 | `eaglei/metadata/MCC.csv` | EAGLE-I modeled customer counts | 15 | the fixture counties and the Grand Total row (D5) |
+| `eaglei/metadata/coverage_history.csv`, `DQI.csv` | EAGLE-I published coverage and data quality index, 2018-2022 | 280 / 50 | copied whole (D67) |
 | `noaa_storm_events/<year>/` | NOAA Storm Events details | 52 events | storms whose match window overlaps a fixture window in a fixture county, plus one water-area event |
 | `nws_zone_county/<year>/` | NWS zone-county correlation files | 305 | the zones of those storms, in all seven file versions |
 | `eia861/<year>/` | EIA-861 Sales, Reliability, Service Territory (raw rows) | 6 to 483 per file | Sales for HI, UT, MA, TX, CA and VA 2024; Reliability for HI, UT and MA 2024 and the utilities behind the D39 and National Grid checks |

@@ -25,7 +25,7 @@ def test_every_quality_gate_passes_on_the_fixture(con, expected_rows):
     results = run(con, fixture_overrides(expected_rows))
     failed = [(r[0], r[1], r[2], r[3]) for r in results if not r[4]]
     assert failed == []
-    assert len(results) == 119
+    assert len(results) == 123
     quality_checks.raise_on_failure(results)
 
 

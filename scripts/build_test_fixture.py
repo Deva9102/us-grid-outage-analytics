@@ -17,7 +17,8 @@ pipeline's rules can be checked with exact expected values:
                                                  71-hour one (too long to bridge) (D64)
               Kalawao HI: its first 2024 reading, so Hawaii's D21 state total is complete.
               Norton city VA: one reading; it has no denominator (D9).
-    MCC       the 15 counties and the Grand Total row (D5)
+    MCC       the fixture counties and the Grand Total row (D5)
+    coverage_history.csv and DQI.csv, whole (D67)
     NOAA      storms whose match window (begin - 12 h to end + 1 h) overlaps a window in a
               fixture county, plus one water-area event (D30); NWS zone rows for their zones
     EIA-861   Sales rows for HI, UT, MA, TX, CA and VA 2024 (state totals, D21, D22) and the utilities
@@ -125,6 +126,10 @@ def eaglei(con) -> None:
         WHERE County_FIPS IN ({keys}) OR County_FIPS = 'Grand Total'
     """, OUT / "eaglei" / "metadata" / "MCC.csv")
     print(f"  MCC: {n} rows")
+    # The coverage metadata is small (one row per state or FEMA region and year): copied whole (D67).
+    for name in ("coverage_history.csv", "DQI.csv"):
+        shutil.copy(RAW / "eaglei" / "metadata" / name, OUT / "eaglei" / "metadata" / name)
+        print(f"  {name}: copied")
 
 
 def noaa_and_zones(con) -> None:
