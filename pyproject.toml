@@ -6,7 +6,7 @@ readme = "README.md"
 authors = [
     { name = "Deva9102" }
 ]
-requires-python = ">=3.14"
+requires-python = ">=3.13"
 dependencies = [
     "databricks-sdk>=0.169.0",
     "databricks-sql-connector>=4.9.0",
@@ -36,7 +36,7 @@ markers = ["slow: full-data checks on data/raw/ (run with: uv run pytest -m slow
 
 [tool.ruff]
 line-length = 140
-target-version = "py314"
+target-version = "py313"
 src = ["scripts", "tests"]
 
 [tool.ruff.lint]
