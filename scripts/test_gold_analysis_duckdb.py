@@ -230,15 +230,15 @@ def report_reliability(con) -> None:
     check("only IEEE 1366 reporters are ranked",
           one(con, "SELECT COUNT(*) FROM gold_utility_reliability u JOIN silver_utility_reliability s USING (data_year, "
                    "utility_number, state_abbr) WHERE s.reporting_standard <> 'IEEE 1366'") == 0)
-    check("other-standard utilities are listed separately (704 "
-          "rows)", one(con, "SELECT COUNT(*) FROM gold_utility_reliability_other") == 704)
+    check("other-standard utilities are listed separately (921 rows with 2025, D59)",
+          one(con, "SELECT COUNT(*) FROM gold_utility_reliability_other") == 921)
     print("\nRows flagged as source errors (not ranked):")
     show(con, """SELECT data_year, utility_number, utility_name, customers, saidi_with_med, saidi_without_med, data_quality_flag,
                         rank_saidi_without_med FROM gold_utility_reliability WHERE data_quality_flag IS NOT NULL""")
-    check("only NSTAR 2023 is flagged, and it has no rank", con.execute(
+    check("only NSTAR 2023 and utility 19162 in 2025 are flagged, and neither has a rank (D59)", con.execute(
         "SELECT data_year, utility_number, rank_saidi_without_med, rank_saidi_with_med FROM gold_utility_reliability WHERE "
-        "data_quality_flag IS NOT NULL"
-    ).fetchall() == [(2023, "54913", None, None)])
+        "data_quality_flag IS NOT NULL ORDER BY data_year"
+    ).fetchall() == [(2023, "54913", None, None), (2025, "19162", None, None)])
 
 
 def report_oe417(con) -> None:

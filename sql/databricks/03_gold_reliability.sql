@@ -28,7 +28,12 @@ WITH
 years AS (
     SELECT DISTINCT event_year AS year FROM gold_outage_events
 ),
--- Every county with EAGLE-I data appears in every year, so a quiet year counts as zero.
+-- The first year EAGLE-I reports each county. Years before it are a coverage gap, not zero
+-- outages, so the county has no row for them (D58): coverage growth is never outage growth.
+first_years AS (
+    SELECT fips_code, MIN(year) AS first_year FROM silver_outages GROUP BY fips_code
+),
+-- Every county appears in every year from its first reported year, so a quiet year counts as zero.
 counties AS (
     SELECT
         d.fips_code,
@@ -36,9 +41,11 @@ counties AS (
         r.state_abbr,
         r.state_name,
         r.census_region,
-        r.fema_region
+        r.fema_region,
+        f.first_year
     FROM dim_county_customers AS d
     INNER JOIN bronze_state_regions AS r ON r.state_fips = LEFT(d.fips_code, 2)
+    INNER JOIN first_years AS f ON f.fips_code = d.fips_code
 ),
 names AS (
     SELECT fips_code, MAX(county) AS county FROM gold_outage_events GROUP BY fips_code
@@ -91,7 +98,7 @@ rated AS (
         c.customers IS NOT NULL AND c.customers >= ${ranking.min_customers} AND COALESCE(s.ranking_eligible, FALSE) AS ranking_eligible,
         COALESCE(s.coverage_status, 'coverage_unknown')                AS state_coverage_status
     FROM counties AS c
-    CROSS JOIN years AS y
+    INNER JOIN years AS y ON y.year >= c.first_year
     LEFT JOIN totals AS t ON t.fips_code = c.fips_code AND t.year = y.year
     LEFT JOIN names  AS n ON n.fips_code = c.fips_code
     LEFT JOIN capping AS cp ON cp.fips_code = c.fips_code AND cp.year = y.year
@@ -104,12 +111,26 @@ CREATE OR REPLACE TABLE gold_county_reliability
 COMMENT 'Outage hours per 1,000 customers per county and year, 50 states and DC, ranked unless footnoted (D38, D44, D45, D46)'
 AS
 WITH
+-- Share of each state-year's customer-hours in reporting units without a denominator (D60):
+-- Connecticut's planning regions from 2025-05-29 have none, so its counties' 2025 rates cover
+-- only part of the year.
+state_years AS (
+    SELECT
+        year,
+        state_abbr,
+        COALESCE(SUM(CASE WHEN customers IS NULL THEN customer_hours_lost END), 0)
+            / NULLIF(SUM(customer_hours_lost), 0) AS share_without_denominator
+    FROM gold_unit_reliability
+    GROUP BY year, state_abbr
+),
 -- Counties of the 50 states and DC only; territory reporting units have their own table (D44).
 base AS (
-    SELECT u.*, x.reason AS exclusion_reason, x.evidence AS exclusion_evidence
+    SELECT u.*, x.reason AS exclusion_reason, x.evidence AS exclusion_evidence,
+           COALESCE(sy.share_without_denominator, 0) AS state_share_without_denominator
     FROM gold_unit_reliability AS u
     LEFT JOIN bronze_ranking_exclusions AS x
         ON x.fips_code = u.fips_code AND TRY_CAST(x.year AS INT) = u.year
+    LEFT JOIN state_years AS sy ON sy.year = u.year AND sy.state_abbr = u.state_abbr
     WHERE u.census_region <> 'Territory'
 ),
 -- Why a county-year is not ranked; the first reason that applies is kept. Footnoted county-years
@@ -122,6 +143,8 @@ reasons AS (
             WHEN customers < ${ranking.min_customers} THEN 'denominator under ${ranking.min_customers_label} customers (D11)'
             WHEN state_coverage_status = 'coverage_unknown' THEN 'coverage_unknown'
             WHEN NOT ranking_eligible THEN 'state below ${coverage.min_customer_coverage_pct}% customer coverage (D22)'
+            WHEN state_share_without_denominator > ${ranking.max_share_without_denominator}
+                THEN 'over ${ranking.max_share_without_denominator_pct}% of the state''s customer-hours in units without a denominator (D60)'
             WHEN exclusion_reason IS NOT NULL THEN CONCAT('reviewed exclusion (D46): ', exclusion_reason)
             WHEN capped_share > ${footnotes.capped_share} AND peak_to_customers > ${footnotes.peak_to_customers}
                 THEN 'over ${footnotes.capped_share_pct}% of customer-hours from capped readings and peak above ${footnotes.peak_to_customers_label}x customers (D45)'  -- noqa: LT05
@@ -228,6 +251,17 @@ states AS (
     FROM gold_unit_reliability
     WHERE census_region <> 'Territory'
     GROUP BY year, state_abbr
+),
+-- Ranked only when covered (D22, D52) and with most customer-hours in units with a denominator (D60).
+eligibility AS (
+    SELECT
+        s.*,
+        COALESCE(1 - s.customer_hours_with_denominator / NULLIF(s.customer_hours_lost, 0), 0) AS share_without_denominator,
+        COALESCE(c.ranking_eligible, FALSE)
+            AND COALESCE(1 - s.customer_hours_with_denominator / NULLIF(s.customer_hours_lost, 0), 0)
+                <= ${ranking.max_share_without_denominator} AS rank_this_year
+    FROM states AS s
+    LEFT JOIN gold_state_coverage AS c ON c.state_abbr = s.state_abbr
 )
 SELECT
     s.year,
@@ -246,14 +280,16 @@ SELECT
     CASE
         WHEN COALESCE(c.coverage_status, 'coverage_unknown') = 'coverage_unknown' THEN 'coverage_unknown'
         WHEN NOT c.ranking_eligible THEN 'state below ${coverage.min_customer_coverage_pct}% customer coverage (D22)'
+        WHEN NOT s.rank_this_year
+            THEN 'over ${ranking.max_share_without_denominator_pct}% of customer-hours in units without a denominator (D60)'
     END AS footnote_reason,
-    CASE WHEN c.ranking_eligible
-         THEN RANK() OVER (PARTITION BY s.year, c.ranking_eligible
+    CASE WHEN s.rank_this_year
+         THEN RANK() OVER (PARTITION BY s.year, s.rank_this_year
                            ORDER BY s.customer_hours_with_denominator * 1000.0 / NULLIF(s.customers, 0) DESC) END AS national_rank,
-    CASE WHEN c.ranking_eligible
-         THEN RANK() OVER (PARTITION BY s.year, s.census_region, c.ranking_eligible
+    CASE WHEN s.rank_this_year
+         THEN RANK() OVER (PARTITION BY s.year, s.census_region, s.rank_this_year
                            ORDER BY s.customer_hours_with_denominator * 1000.0 / NULLIF(s.customers, 0) DESC) END AS region_rank
-FROM states AS s
+FROM eligibility AS s
 LEFT JOIN gold_state_coverage AS c ON c.state_abbr = s.state_abbr;
 
 

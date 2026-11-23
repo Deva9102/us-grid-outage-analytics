@@ -17,8 +17,9 @@ def test_storm_match_on_fixture(rows):
         SELECT event_id, storm_type, most_severe_storm_type, attribution_rule, candidate_storms
         FROM gold_event_storm_match WHERE storm_type <> 'unmatched' ORDER BY event_id
     """) == [("48157-00001", "Thunderstorm Wind", "Thunderstorm Wind", "active_at_start", 2),
-             ("48201-00001", "Thunderstorm Wind", "Thunderstorm Wind", "active_at_start", 3)]
-    assert rows("SELECT COUNT(*), COUNT(DISTINCT event_id) FROM gold_event_storm_match") == [(27, 27)]
+             ("48201-00001", "Thunderstorm Wind", "Thunderstorm Wind", "active_at_start", 3),
+             ("54061-00001", "Thunderstorm Wind", "Thunderstorm Wind", "active_at_start", 7)]
+    assert rows("SELECT COUNT(*), COUNT(DISTINCT event_id) FROM gold_event_storm_match") == [(29, 29)]
 
 
 def test_storm_attribution_rules():
@@ -73,7 +74,8 @@ def test_state_coverage(rows):
              ("HI", 5, 506989, 506988, 1.0, True, "covered", 1.317739),
              ("TX", 2, 2039710, 14481051, 0.1409, False, "below_minimum", 1.0),
              ("UT", 5, 1074165, 1429521, 0.7514, True, "covered", 1.0),
-             ("VA", 1, None, 4104032, None, False, "coverage_unknown", 1.0)]
+             ("VA", 1, None, 4104032, None, False, "coverage_unknown", 1.0),
+             ("WV", 1, 55481, None, None, False, "coverage_unknown", 1.0)]
 
 
 def test_unknown_coverage_is_not_ranked(rows):
@@ -82,30 +84,31 @@ def test_unknown_coverage_is_not_ranked(rows):
     assert rows("""
         SELECT year, state_abbr, national_rank, footnote_reason FROM gold_state_reliability
         WHERE state_abbr = 'VA' ORDER BY year
-    """) == [(2022, "VA", None, "coverage_unknown"), (2024, "VA", None, "coverage_unknown")]
+    """) == [(2024, "VA", None, "coverage_unknown")]  # Norton city is first reported in 2024 (D61)
     assert rows("SELECT coverage_status, COUNT(*) FROM gold_state_coverage GROUP BY 1 ORDER BY 1") == [
         ("below_minimum", 2), ("coverage_unknown", 49), ("covered", 2)]
 
 
 def test_county_ranking_footnotes(rows):
     """The first reason that applies is kept: D9 no denominator, D11 under 1,000 customers, D22 state
-    coverage, D45 capped readings (Rich UT: 94.7% of customer-hours capped, peak 3.9x customers)."""
+    coverage, D45 capped readings (Rich UT: 94.7% of customer-hours capped, peak 3.9x customers).
+    D61: a county has rows only from its first reported year, so the counties whose first fixture
+    reading is in 2023 or 2024 have no 2022 row."""
     assert rows("""
         SELECT year, fips_code, would_have_rank, footnote_reason, footnote_evidence
         FROM gold_county_ranking_footnotes ORDER BY year, fips_code
     """) == [
         (2022, "06037", 5, "state below 70% customer coverage (D22)", None),
-        (2022, "15005", 5, "denominator under 1,000 customers (D11)", None),
         (2022, "48157", 3, "state below 70% customer coverage (D22)", None),
         (2022, "48201", 2, "state below 70% customer coverage (D22)", None),
-        (2022, "51720", None, "no denominator (D9)", None),
-        (2024, "06037", 11, "state below 70% customer coverage (D22)", None),
-        (2024, "15005", 11, "denominator under 1,000 customers (D11)", None),
+        (2024, "06037", 12, "state below 70% customer coverage (D22)", None),
+        (2024, "15005", 12, "denominator under 1,000 customers (D11)", None),
         (2024, "48157", 2, "state below 70% customer coverage (D22)", None),
         (2024, "48201", 1, "state below 70% customer coverage (D22)", None),
         (2024, "49033", 4, "over 25% of customer-hours from capped readings and peak above 3x customers (D45)",
          "capped share 94.7%, peak 3.9x customers"),
         (2024, "51720", None, "no denominator (D9)", None),
+        (2024, "54061", 5, "coverage_unknown", None),
     ]
 
 
@@ -115,9 +118,8 @@ def test_county_ranks(rows):
         SELECT year, fips_code, ROUND(outage_hours_per_1000_customers, 3), national_rank, state_rank
         FROM gold_county_reliability WHERE ranking_eligible ORDER BY year, national_rank, fips_code
     """) == [
-        (2022, "49057", 281.979, 1, 1), (2022, "15007", 10.484, 2, 1), (2022, "15001", 0.0, 3, 2),
-        (2022, "15003", 0.0, 3, 2), (2022, "15009", 0.0, 3, 2), (2022, "49011", 0.0, 3, 2),
-        (2022, "49033", 0.0, 3, 2), (2022, "49035", 0.0, 3, 2), (2022, "49049", 0.0, 3, 2),
+        (2022, "49057", 281.979, 1, 1), (2022, "15007", 10.484, 2, 1), (2022, "15003", 0.0, 3, 2),
+        (2022, "49011", 0.0, 3, 2), (2022, "49035", 0.0, 3, 2), (2022, "49049", 0.0, 3, 2),
         (2024, "15007", 3325.548, 1, 1), (2024, "15001", 235.798, 2, 2), (2024, "49057", 142.786, 3, 1),
         (2024, "15009", 105.753, 4, 3), (2024, "15003", 25.123, 5, 4), (2024, "49035", 2.376, 6, 2),
         (2024, "49011", 1.971, 7, 3), (2024, "49049", 0.0, 8, 4),
@@ -132,10 +134,11 @@ def test_state_ranks(rows):
         SELECT year, state_abbr, ROUND(outage_hours_per_1000_customers, 3), national_rank, region_rank, footnote_reason
         FROM gold_state_reliability ORDER BY year, state_abbr
     """) == [
-        (2022, "CA", 0.0, None, None, d22), (2022, "HI", 0.576, 2, 2, None), (2022, "TX", 129.408, None, None, d22),
-        (2022, "UT", 27.856, 1, 1, None), (2022, "VA", None, None, None, "coverage_unknown"),
-        (2024, "CA", 0.0, None, None, d22), (2024, "HI", 279.842, 1, 1, None), (2024, "TX", 47385.167, None, None, d22),
+        (2022, "CA", 0.0, None, None, d22), (2022, "HI", 1.117, 2, 2, None), (2022, "TX", 129.408, None, None, d22),
+        (2022, "UT", 27.882, 1, 1, None),
+        (2024, "CA", 0.0, None, None, d22), (2024, "HI", 279.842, 1, 1, None), (2024, "TX", 47386.023, None, None, d22),
         (2024, "UT", 16.209, 2, 2, None), (2024, "VA", None, None, None, "coverage_unknown"),
+        (2024, "WV", 718.075, None, None, "coverage_unknown"),
     ]
 
 
