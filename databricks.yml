@@ -2,7 +2,8 @@
 #
 # The SQL comes from build/databricks/, rendered from sql/databricks/ and config/pipeline.yml by
 # scripts/render_job_sql.py; run "make job-deploy", which renders first. See docs/runbook.md.
-# The raw files must already be in the volume (make pipeline, or its convert and upload steps).
+# The job assumes the raw files are already in the volume: it never downloads, converts or uploads.
+# Upload them first with "make pipeline" (or its convert and upload steps), see docs/runbook.md.
 #
 # warehouse_id is set from DATABRICKS_HTTP_PATH in .env by scripts/databricks_cli.py.
 
@@ -33,6 +34,8 @@ resources:
       description: >-
         Bronze, Silver and Gold of the US power outage pipeline on the SQL warehouse, each step
         followed by its quality gate (D48, D54). A failed gate fails its task and skips the rest.
+        Loads the years in incremental.load_years of config/pipeline.yml (D56). Build tasks retry
+        once; gates never retry (D55).
       max_concurrent_runs: 1
       timeout_seconds: 7200
 
@@ -61,8 +64,7 @@ resources:
         - task_key: bronze_gate
           depends_on:
             - task_key: bronze
-          max_retries: 1
-          min_retry_interval_millis: 60000
+          max_retries: 0   # a gate failure is a data finding, not a transient error (D55)
           sql_task:
             warehouse_id: ${var.warehouse_id}
             file:
@@ -83,8 +85,7 @@ resources:
         - task_key: silver_gate
           depends_on:
             - task_key: silver
-          max_retries: 1
-          min_retry_interval_millis: 60000
+          max_retries: 0   # a gate failure is a data finding, not a transient error (D55)
           sql_task:
             warehouse_id: ${var.warehouse_id}
             file:
@@ -105,8 +106,7 @@ resources:
         - task_key: gold_events_gate
           depends_on:
             - task_key: gold_events
-          max_retries: 1
-          min_retry_interval_millis: 60000
+          max_retries: 0   # a gate failure is a data finding, not a transient error (D55)
           sql_task:
             warehouse_id: ${var.warehouse_id}
             file:
@@ -127,8 +127,7 @@ resources:
         - task_key: gold_storm_match_gate
           depends_on:
             - task_key: gold_storm_match
-          max_retries: 1
-          min_retry_interval_millis: 60000
+          max_retries: 0   # a gate failure is a data finding, not a transient error (D55)
           sql_task:
             warehouse_id: ${var.warehouse_id}
             file:
@@ -149,8 +148,7 @@ resources:
         - task_key: gold_reliability_gate
           depends_on:
             - task_key: gold_reliability
-          max_retries: 1
-          min_retry_interval_millis: 60000
+          max_retries: 0   # a gate failure is a data finding, not a transient error (D55)
           sql_task:
             warehouse_id: ${var.warehouse_id}
             file:

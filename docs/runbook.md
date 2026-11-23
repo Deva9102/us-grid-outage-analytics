@@ -3,12 +3,19 @@
 How I deploy and operate the pipeline as a Databricks Job (decision D54). The job is defined in
 `databricks.yml` (a Databricks Asset Bundle) and runs on my SQL warehouse in Databricks Free
 Edition. `make pipeline` (D49) remains the full local runner: it also converts and uploads the
-raw files, which the job expects to find in the volume already.
+raw files.
+
+**The job assumes the raw files are already in the volume** `/Volumes/workspace/outages/raw/`. It
+never downloads, converts or uploads anything. Before the first run, and after adding a year or
+refreshing a source, I upload them with `make pipeline` (or only its convert and upload steps,
+below). A missing file fails the `bronze` task.
 
 ## The job
 
-`us_grid_outage_pipeline` runs ten SQL tasks in a chain. Each task waits for the one before it and
-retries once after a minute.
+`us_grid_outage_pipeline` runs ten SQL tasks in a chain. Each task waits for the one before it.
+The five build tasks retry once after a minute (a warehouse hiccup); the five gate tasks never
+retry, because a failed check is a finding about the data, and rerunning the same check on the
+same tables gives the same answer (D55).
 
 ```
 bronze -> bronze_gate -> silver -> silver_gate -> gold_events -> gold_events_gate
@@ -38,6 +45,21 @@ The task SQL lives in `build/databricks/` (gitignored). `scripts/render_job_sql.
 3. The warehouse session time zone must be UTC (D1). Each task file also sets it.
 4. The raw files must be in `/Volumes/workspace/outages/raw/`:
    `uv run python scripts/run_databricks.py --steps check,convert,upload`.
+
+## Incremental loading (D56, D57)
+
+The job loads only the EAGLE-I years in `incremental.load_years` of `config/pipeline.yml`
+(currently `[2025]`): it rebuilds those Bronze tables and replaces those Silver partitions
+(`INSERT INTO silver_outages REPLACE WHERE year IN (...)`), and leaves every other year untouched.
+Gold events are rebuilt from 7 days (`incremental.lookback_days`) before the first new reading, and
+from the start of any event still open then, so an outage running across New Year stays one
+event. The tables downstream of the events are small and are rebuilt in full.
+
+To add a year: download it, add its Bronze statement in `01_bronze.sql`, its branches in
+`02_silver.sql` and `02_silver_sources.sql` and its row count in `90_quality_checks.sql`, add it to
+`years` and set `load_years` to it, update `quality.expected_rows` after a DuckDB build, upload,
+deploy and run. The denominators stay on `denominator.base_years` (D58). For a full rebuild, list every year in `load_years` (or run
+`uv run python scripts/run_databricks.py --full`).
 
 ## Deploy
 
@@ -84,7 +106,9 @@ uv run python scripts/job_run.py --repair <run_id> --task silver    # re-run one
 
 A repair re-runs the chosen tasks and the tasks that depend on them, in the same run, and keeps
 the successful tasks before them. In the UI: open the run and choose **Repair run**. Every task
-rebuilds its tables with `CREATE OR REPLACE` / `INSERT OVERWRITE`, so re-running is safe.
+rebuilds its tables with `CREATE OR REPLACE`, `INSERT OVERWRITE` or a partition `REPLACE WHERE`,
+and the Gold reprocess window is computed from the events the last run wrote, so re-running is
+safe and gives the same rows.
 
 ## When a quality gate fails
 
@@ -101,7 +125,8 @@ after it has run, so the tables downstream still hold the last good build. Then:
    ORDER BY run_ts DESC
    ```
 
-   `quality_gate_staging` holds all checks of the most recent gate.
+   `quality_gate_staging` holds all checks of the most recent gate. Results are kept for
+   `quality.results_retention_days` (90) days: every gate deletes older rows at its end (D55).
 2. Decide which kind of failure it is:
    - **Row count** (`row count: <table>` or `task row count: <table>`): the expected counts are a
      contract (D50). A changed count means a source file, the SQL or the config changed. Find
