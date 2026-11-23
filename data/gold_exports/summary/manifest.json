@@ -1,0 +1,297 @@
+{
+  "engine": "databricks",
+  "summary": {
+    "dim_date": {
+      "file": "data/gold_exports/summary/dim_date.csv",
+      "rows": 1461,
+      "bytes": 62835,
+      "sha256": "f4673f570d08082f1d951ea2dd8a4dc05f5e1bbd7f9c09820c453b3b4507d7cb",
+      "columns": {
+        "date_day": "date32[day]",
+        "date_key": "int32",
+        "year": "int32",
+        "quarter": "int32",
+        "month": "int32",
+        "day_of_month": "int32",
+        "month_start": "date32[day]"
+      }
+    },
+    "dim_year": {
+      "file": "data/gold_exports/summary/dim_year.csv",
+      "rows": 8,
+      "bytes": 206,
+      "sha256": "f274762f58318ecf9c14385107111e8e908990d56f1867d2d28c2ca0c925bce5",
+      "columns": {
+        "year": "int32",
+        "has_readings": "bool",
+        "has_published_coverage": "bool"
+      }
+    },
+    "dim_state": {
+      "file": "data/gold_exports/summary/dim_state.csv",
+      "rows": 53,
+      "bytes": 6216,
+      "sha256": "c8740fe80798d304c77d017865f03181f36cc26761ab911ef4e46941143c5e91",
+      "columns": {
+        "state_abbr": "string",
+        "state_fips": "string",
+        "state_name": "string",
+        "census_region": "string",
+        "census_division": "string",
+        "fema_region": "string",
+        "is_ranked_jurisdiction": "bool",
+        "total_counties": "int64",
+        "eaglei_counties": "int64",
+        "eaglei_customers": "int64",
+        "eia_customers": "int64",
+        "customer_coverage": "double",
+        "coverage_status": "string",
+        "coverage_ranking_eligible": "bool",
+        "calibration_factor": "double"
+      }
+    },
+    "dim_county": {
+      "file": "data/gold_exports/summary/dim_county.csv",
+      "rows": 3079,
+      "bytes": 404949,
+      "sha256": "f5c7d663c8e5421530cfee6346aeed72eb55e5812916f6dfb1f9ae7f448dd073",
+      "columns": {
+        "fips_code": "string",
+        "county": "string",
+        "state_abbr": "string",
+        "state_name": "string",
+        "census_region": "string",
+        "fema_region": "string",
+        "customers": "int64",
+        "denominator_source": "string",
+        "has_denominator": "bool",
+        "denominator_mismatch": "bool",
+        "calibration_factor": "double",
+        "state_calibration_factor": "double",
+        "is_calibrated": "bool",
+        "peak_floor_applied": "bool",
+        "peak_floor_skipped": "bool",
+        "base_peak_customers_out": "int64",
+        "first_reported_year": "int32"
+      }
+    },
+    "dim_storm_type": {
+      "file": "data/gold_exports/summary/dim_storm_type.csv",
+      "rows": 55,
+      "bytes": 2803,
+      "sha256": "51a44222de7d0b099e4f7be5f5cc597c9d7e4b8ba3d41bc8522a7a40e0091983",
+      "columns": {
+        "storm_type": "string",
+        "severity_rank": "int32",
+        "storm_tier": "string",
+        "can_cause_outage": "bool",
+        "storm_group": "string"
+      }
+    },
+    "dim_utility": {
+      "file": "data/gold_exports/summary/dim_utility.csv",
+      "rows": 937,
+      "bytes": 67652,
+      "sha256": "664c0caa3e239287bf9cc42954d0d72715d78d4819b4c5d515b3896e25515a54",
+      "columns": {
+        "utility_number": "string",
+        "utility_name": "string",
+        "ownership": "string",
+        "parent_company": "string",
+        "is_eversource_or_national_grid": "bool",
+        "first_year": "int32",
+        "last_year": "int32",
+        "states_reported": "int64"
+      }
+    },
+    "fct_state_reliability": {
+      "file": "data/gold_exports/summary/fct_state_reliability.csv",
+      "rows": 204,
+      "bytes": 20332,
+      "sha256": "b1cc5bb059b85a6ab1bf8973d29b42ca39d2ff2a1bee10d4308e6778071057f4",
+      "columns": {
+        "state_year_key": "string",
+        "state_abbr": "string",
+        "year": "int32",
+        "events": "int64",
+        "customer_hours_lost": "double",
+        "customers": "int64",
+        "outage_hours_per_1000_customers": "double",
+        "eaglei_counties": "int64",
+        "total_counties": "int64",
+        "customer_coverage": "double",
+        "ranking_eligible": "bool",
+        "is_ranked": "bool",
+        "national_rank": "int32",
+        "region_rank": "int32",
+        "footnote_reason": "string"
+      }
+    },
+    "fct_county_reliability": {
+      "file": "data/gold_exports/summary/fct_county_reliability.csv",
+      "rows": 12217,
+      "bytes": 1487205,
+      "sha256": "c4a66f87bf0c3d4394ea0fe2e71210f8356034f8a263f0dc958925e7ce140e60",
+      "columns": {
+        "county_year_key": "string",
+        "fips_code": "string",
+        "state_abbr": "string",
+        "year": "int32",
+        "customers": "int64",
+        "events": "int64",
+        "customer_hours_lost": "double",
+        "max_peak_customers_out": "int64",
+        "outage_hours_per_1000_customers": "double",
+        "capped_customer_hours": "double",
+        "capped_share": "double",
+        "peak_to_customers": "decimal128(38, 16)",
+        "ranking_eligible": "bool",
+        "is_ranked": "bool",
+        "national_rank": "int32",
+        "state_rank": "int32",
+        "rank_without_footnotes": "int32",
+        "footnote_reason": "string",
+        "footnote_evidence": "string"
+      }
+    },
+    "fct_territory_reliability": {
+      "file": "data/gold_exports/summary/fct_territory_reliability.csv",
+      "rows": 8,
+      "bytes": 1099,
+      "sha256": "1d93a6da372134bc69e275abbf0f7cee412ec2e5910bce8ffe72b2d747e519b7",
+      "columns": {
+        "territory_year_key": "string",
+        "state_abbr": "string",
+        "year": "int32",
+        "events": "int64",
+        "customer_hours_lost": "double",
+        "customers": "int64",
+        "outage_hours_per_1000_customers": "double",
+        "reporting_units": "int64",
+        "customer_coverage": "double",
+        "geography_note": "string"
+      }
+    },
+    "fct_utility_reliability": {
+      "file": "data/gold_exports/summary/fct_utility_reliability.csv",
+      "rows": 3884,
+      "bytes": 413959,
+      "sha256": "9c706e029f1d90d56937c9f95537c6b1572fa9bc994a14b6c248f6e508f13260",
+      "columns": {
+        "utility_report_key": "string",
+        "data_year": "int32",
+        "utility_number": "string",
+        "state_abbr": "string",
+        "reporting_group": "string",
+        "size_band": "string",
+        "customers": "int64",
+        "saidi_with_med": "double",
+        "saidi_without_med": "double",
+        "saifi_with_med": "double",
+        "saifi_without_med": "double",
+        "data_quality_flag": "string",
+        "utilities_in_band": "int64",
+        "is_ranked": "bool",
+        "rank_saidi_without_med": "int64",
+        "rank_saidi_with_med": "int64",
+        "rank_saifi_without_med": "int64",
+        "rank_saifi_with_med": "int64"
+      }
+    },
+    "fct_county_coverage": {
+      "file": "data/gold_exports/summary/fct_county_coverage.csv",
+      "rows": 12211,
+      "bytes": 1050172,
+      "sha256": "5922c189bcf4f327ef421009d8e80c71d66da12b0e56d1b6710361bf3c870b99",
+      "columns": {
+        "county_year_key": "string",
+        "fips_code": "string",
+        "state_abbr": "string",
+        "year": "int32",
+        "readings": "int64",
+        "first_reading": "timestamp[us]",
+        "last_reading": "timestamp[us]",
+        "customers": "int64"
+      }
+    },
+    "fct_published_coverage": {
+      "file": "data/gold_exports/summary/fct_published_coverage.csv",
+      "rows": 280,
+      "bytes": 14526,
+      "sha256": "811fbf5b14930a4c65b8475354a94cff8be406bf69d29219dc8d5a61082a38a5",
+      "columns": {
+        "state_year_key": "string",
+        "state_abbr": "string",
+        "year": "int32",
+        "total_customers": "int64",
+        "min_covered": "int64",
+        "max_covered": "int64",
+        "min_share_covered": "double",
+        "max_share_covered": "double"
+      }
+    },
+    "fct_data_quality_index": {
+      "file": "data/gold_exports/summary/fct_data_quality_index.csv",
+      "rows": 50,
+      "bytes": 5003,
+      "sha256": "7a68ccb048f4a447821ed46941422097c8f1758509f18556382ed6d92cf38ce6",
+      "columns": {
+        "region_year_key": "string",
+        "fema_region": "string",
+        "year": "int32",
+        "success_rate_pct": "double",
+        "percent_enabled": "double",
+        "spatial_precision_pct": "double",
+        "customer_coverage_pct": "double",
+        "max_covered": "int64",
+        "total_customers": "int64",
+        "dqi": "double"
+      }
+    }
+  },
+  "release": {
+    "fct_outage_events": {
+      "file": "data/gold_exports/release/fct_outage_events.parquet",
+      "rows": 602355,
+      "bytes": 25645992,
+      "sha256": "f66dda2187911625668ec0e6ef62e657575bf7bc60d47aad5ec013a5aee61da7",
+      "columns": {
+        "event_id": "string",
+        "fips_code": "string",
+        "state_abbr": "string",
+        "event_date": "date32[day]",
+        "event_year": "int32",
+        "event_start": "timestamp[us]",
+        "event_end": "timestamp[us]",
+        "duration_hours": "double",
+        "reading_count": "int64",
+        "peak_customers_out": "int64",
+        "event_threshold": "double",
+        "customer_hours_lost": "double",
+        "customer_hours_lost_raw": "double",
+        "customers": "int64",
+        "denominator_source": "string",
+        "has_denominator": "bool",
+        "ranking_eligible": "bool",
+        "peak_out_per_1000": "double",
+        "customer_hours_per_1000": "double",
+        "exceeds_customers": "bool",
+        "spans_feed_gap": "bool",
+        "feed_gap_hours": "double",
+        "spans_dropout": "bool",
+        "dropout_hours": "double",
+        "bridged_empty_hours": "double",
+        "spans_empty_gap": "bool",
+        "storm_type": "string",
+        "storm_tier": "string",
+        "storm_event_id": "int64",
+        "storm_begin_utc": "timestamp[us]",
+        "storm_end_utc": "timestamp[us]",
+        "overlap_hours": "decimal128(27, 6)",
+        "attribution_rule": "string",
+        "most_severe_storm_type": "string",
+        "candidate_storms": "int64"
+      }
+    }
+  }
+}

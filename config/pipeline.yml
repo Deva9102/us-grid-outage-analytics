@@ -105,6 +105,28 @@ export:                         # scripts/export_gold.py: CSVs for Power BI (D49
     - gold_oe417_check
     - dim_county_customers
 
+mart_export:                    # scripts/export_marts.py: the dbt marts for Power BI (D70)
+  summary_folder: data/gold_exports/summary   # small tables as CSV, committed
+  release_folder: data/gold_exports/release   # large tables as Parquet, gitignored, GitHub Release
+  max_summary_mb: 10              # a summary CSV larger than this stops the export
+  release_repo: Deva9102/us-grid-outage-analytics
+  summary_tables:                 # table: the key the rows are sorted on, so diffs stay small
+    dim_date: date_day
+    dim_year: year
+    dim_state: state_abbr
+    dim_county: fips_code
+    dim_storm_type: storm_type
+    dim_utility: utility_number
+    fct_state_reliability: state_year_key
+    fct_county_reliability: county_year_key
+    fct_territory_reliability: territory_year_key
+    fct_utility_reliability: utility_report_key
+    fct_county_coverage: county_year_key
+    fct_published_coverage: state_year_key
+    fct_data_quality_index: region_year_key
+  release_tables:
+    fct_outage_events: event_id
+
 quality:                        # sql/databricks/90_quality_checks.sql (D48)
   row_count_tolerance: 0              # expected counts are a contract: they must match exactly (D50)
   float_tolerance: 0.000001           # slack for shares computed in floating point

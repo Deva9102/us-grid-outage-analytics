@@ -6,7 +6,7 @@ ENGINE  ?= databricks
 DUCKDB_FILE ?=
 DUCKDB_ARG := $(if $(DUCKDB_FILE),--duckdb-file $(DUCKDB_FILE),)
 
-.PHONY: help setup download profile test test-slow lint ci fixture pipeline quality export all clean \
+.PHONY: help setup download profile test test-slow lint ci fixture pipeline quality export export-gold release-draft all clean \
         cli job-render job-validate job-deploy job-run migrate \
         dbt-build dbt-test-local dbt-docs analysis charts check-findings data-dictionary
 
@@ -21,7 +21,9 @@ help:
 	@echo "make fixture    rebuild tests/fixtures/ from data/raw/"
 	@echo "make pipeline   convert, upload, run all SQL on Databricks with quality gates, verify"
 	@echo "make quality    run every quality check (ENGINE=databricks|duckdb, DUCKDB_FILE=path)"
-	@echo "make export     write Gold tables to data/gold_exports/ as CSV for Power BI"
+	@echo "make export     write the dbt marts for Power BI: summary CSVs (committed) and Parquet for the release"
+	@echo "make release-draft  upload the Parquet exports to a draft GitHub Release (or print the manual steps)"
+	@echo "make export-gold  write the Gold tables to data/gold_exports/ as CSV (not committed)"
 	@echo "make cli        install the pinned Databricks CLI into .tools/ (no global install)"
 	@echo "make job-render render the job SQL into build/databricks/ from config/pipeline.yml"
 	@echo "make job-deploy render, validate and deploy the Databricks Job (databricks.yml)"
@@ -34,7 +36,7 @@ help:
 	@echo "make charts     redraw the five charts in docs/images/ from docs/analysis_results/"
 	@echo "make check-findings  rerun the analysis queries and confirm every number in the docs still matches"
 	@echo "make data-dictionary  write docs/data_dictionary.md from the dbt docs"
-	@echo "make all        setup, download, test, pipeline, quality, export"
+	@echo "make all        setup, download, test, pipeline, quality, dbt-build, export"
 	@echo "make clean      remove logs and Python caches (raw data is kept)"
 
 setup:
@@ -77,7 +79,14 @@ pipeline:
 quality:
 	$(PY) scripts/quality_checks.py --engine $(ENGINE) $(DUCKDB_ARG)
 
+# Power BI handoff (D70): the dbt marts, small tables as committed CSV, large ones as Parquet.
 export:
+	$(PY) scripts/export_marts.py --engine $(ENGINE) $(DUCKDB_ARG)
+
+release-draft:
+	$(PY) scripts/publish_release.py $(if $(TAG),--tag $(TAG),)
+
+export-gold:
 	$(PY) scripts/export_gold.py --engine $(ENGINE) $(DUCKDB_ARG)
 
 # Databricks Job via an Asset Bundle (D54); see docs/runbook.md.
@@ -136,7 +145,7 @@ data-dictionary:
 	$(DBTRUN) docs generate --target databricks
 	$(PY) scripts/data_dictionary.py
 
-all: setup download test pipeline quality export
+all: setup download test pipeline quality dbt-build export
 
 clean:
 	rm -rf logs

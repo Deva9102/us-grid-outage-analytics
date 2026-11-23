@@ -1,0 +1,54 @@
+"state_abbr","state_fips","state_name","census_region","census_division","fema_region","is_ranked_jurisdiction","total_counties","eaglei_counties","eaglei_customers","eia_customers","customer_coverage","coverage_status","coverage_ranking_eligible","calibration_factor"
+"AK","02","Alaska","West","Pacific","X","true",30,9,272779,356597,0.7649503501151159,"covered","true",1
+"AL","01","Alabama","South","East South Central","IV","true",67,66,2759049,2795343,0.9870162624050072,"covered","true",1
+"AR","05","Arkansas","South","West South Central","VI","true",75,75,1763397,1720753,1,"covered","true",1
+"AZ","04","Arizona","West","Mountain","IX","true",15,15,3305534,3490713,0.9469509524271975,"covered","true",1
+"CA","06","California","West","Pacific","IX","true",58,58,15988092,16140825,0.9905374725269619,"covered","true",1
+"CO","08","Colorado","West","Mountain","VIII","true",64,61,2764763,2978176,0.9283410382730907,"covered","true",1
+"CT","09","Connecticut","Northeast","New England","I","true",8,17,1699641,1713431,0.9919518206452433,"covered","true",1
+"DC","11","District of Columbia","South","South Atlantic","III","true",1,1,308844,346305,0.8918265690648417,"covered","true",1
+"DE","10","Delaware","South","South Atlantic","III","true",3,3,627374,535330,1,"covered","true",1
+"FL","12","Florida","South","South Atlantic","IV","true",67,67,14032596,11779012,1,"covered","true",1
+"GA","13","Georgia","South","South Atlantic","IV","true",159,159,5360467,5459009,0.9819487383149579,"covered","true",1
+"HI","15","Hawaii","West","Pacific","IX","true",4,5,506989,506988,1,"covered","true",1.317739275880297
+"IA","19","Iowa","Midwest","West North Central","VII","true",99,99,1844990,1710011,1,"covered","true",1
+"ID","16","Idaho","West","Mountain","X","true",44,43,986628,1021781,0.9655963459880346,"covered","true",1
+"IL","17","Illinois","Midwest","East North Central","V","true",102,102,6223152,6036676,1,"covered","true",1
+"IN","18","Indiana","Midwest","East North Central","V","true",92,92,3391711,3450420,0.9829849699456877,"covered","true",1
+"KS","20","Kansas","Midwest","West North Central","VII","true",105,102,1613938,1586227,1,"covered","true",1
+"KY","21","Kentucky","South","East South Central","IV","true",120,120,2445600,2409509,1,"covered","true",1
+"LA","22","Louisiana","South","West South Central","VI","true",64,64,2619271,2467237,1,"covered","true",1
+"MA","25","Massachusetts","Northeast","New England","I","true",14,14,3372902,3372904,0.9999994070391568,"covered","true",2.0160579725957217
+"MD","24","Maryland","South","South Atlantic","III","true",24,24,2883063,2722513,1,"covered","true",1
+"ME","23","Maine","Northeast","New England","I","true",16,16,886513,855558,1,"covered","true",1
+"MI","26","Michigan","Midwest","East North Central","V","true",83,83,5307102,5086705,1,"covered","true",1
+"MN","27","Minnesota","Midwest","West North Central","V","true",87,86,2852612,2899051,0.9839813097458444,"covered","true",1
+"MO","29","Missouri","Midwest","West North Central","VII","true",115,115,3347316,3347316,1,"covered","true",1.2910800772917765
+"MS","28","Mississippi","South","East South Central","IV","true",82,82,1650486,1599687,1,"covered","true",1
+"MT","30","Montana","West","Mountain","VIII","true",56,55,657977,692539,0.9500937853319452,"covered","true",1
+"NC","37","North Carolina","South","South Atlantic","IV","true",100,100,7115460,5827720,1,"covered","true",1
+"ND","38","North Dakota","Midwest","West North Central","VIII","true",53,52,495303,485894,1,"covered","true",1
+"NE","31","Nebraska","Midwest","West North Central","VII","true",93,56,977635,1131588,0.8639496000311068,"covered","true",1
+"NH","33","New Hampshire","Northeast","New England","I","true",10,10,805967,768001,1,"covered","true",1
+"NJ","34","New Jersey","Northeast","Middle Atlantic","II","true",21,21,4105931,4287117,0.9577370993140611,"covered","true",1
+"NM","35","New Mexico","West","Mountain","VI","true",33,31,1162427,1093458,1,"covered","true",1
+"NV","32","Nevada","West","Mountain","IX","true",17,15,1450821,1494282,0.9709151284697266,"covered","true",1
+"NY","36","New York","Northeast","Middle Atlantic","II","true",62,62,8446100,8600594,0.9820368221078684,"covered","true",1
+"OH","39","Ohio","Midwest","East North Central","V","true",88,88,5667391,5787740,0.9792062186622067,"covered","true",1
+"OK","40","Oklahoma","South","West South Central","VI","true",77,77,2483302,2197296,1,"covered","true",1
+"OR","41","Oregon","West","Pacific","X","true",36,35,2182854,2142042,1,"covered","true",1
+"PA","42","Pennsylvania","Northeast","Middle Atlantic","III","true",67,67,6138707,6288243,0.976219748505266,"covered","true",1
+"PR","72","Puerto Rico","Territory","Territory","II","false",78,7,1553725,1511848,1,"covered","true",1
+"RI","44","Rhode Island","Northeast","New England","I","true",5,5,517228,521662,0.9915002434526571,"covered","true",1
+"SC","45","South Carolina","South","South Atlantic","IV","true",46,46,2998871,2998873,0.9999993330827948,"covered","true",1.9203750875745655
+"SD","46","South Dakota","Midwest","West North Central","VIII","true",66,66,516157,516156,1,"covered","true",1.2751532482427794
+"TN","47","Tennessee","South","East South Central","IV","true",95,90,3637703,3710074,0.980493380994557,"covered","true",1
+"TX","48","Texas","South","West South Central","VI","true",254,254,15063622,14481051,1,"covered","true",1
+"UT","49","Utah","West","Mountain","VIII","true",29,27,1423810,1429521,0.9960049555060752,"covered","true",1
+"VA","51","Virginia","South","South Atlantic","III","true",133,133,4915491,4104032,1,"covered","true",1
+"VI","78","United States Virgin Islands","Territory","Territory","II","false",3,3,56307,54520,1,"covered","true",1
+"VT","50","Vermont","Northeast","New England","I","true",14,14,393338,388511,1,"covered","true",1
+"WA","53","Washington","West","Pacific","X","true",39,38,3690047,3800681,0.9708910061117995,"covered","true",1
+"WI","55","Wisconsin","Midwest","East North Central","V","true",72,72,3231291,3219048,1,"covered","true",1
+"WV","54","West Virginia","South","South Atlantic","III","true",55,55,993116,1029473,0.9646838722336574,"covered","true",1
+"WY","56","Wyoming","West","Mountain","VIII","true",23,22,337758,357453,0.9449018472358603,"covered","true",1

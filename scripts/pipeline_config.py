@@ -130,6 +130,12 @@ def validate(cfg: dict) -> None:
     number("export.max_file_mb", 1)
     if not _require(cfg, "export.tables"):
         raise ConfigError("export.tables must list at least one table")
+    number("mart_export.max_summary_mb", 0, lo_open=True)
+    for key in ("summary_tables", "release_tables"):
+        tables = _require(cfg, f"mart_export.{key}")
+        if not tables or not all(re.fullmatch(r"(dim|fct)_\w+", t) and re.fullmatch(r"\w+", str(k))
+                                 for t, k in tables.items()):
+            raise ConfigError(f"mart_export.{key} must map mart names to their key column")
     number("quality.float_tolerance", 0, 1)
     if not isinstance(number("quality.results_retention_days", 1), int):
         raise ConfigError("quality.results_retention_days must be a whole number of days")

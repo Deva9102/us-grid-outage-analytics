@@ -7,6 +7,10 @@ __pycache__/
 logs/
 # Gold CSV exports are too large to commit (D50)
 data/gold_exports/*.csv
+# Mart exports for Power BI (D70): the large Parquet files go to a GitHub Release; the small
+# summary CSVs are committed
+data/gold_exports/release/
+!data/gold_exports/summary/
 # DuckDB spill files from local full-data runs
 .tmp/
 .pytest_cache/
