@@ -8,7 +8,8 @@ DUCKDB_ARG := $(if $(DUCKDB_FILE),--duckdb-file $(DUCKDB_FILE),)
 
 .PHONY: help setup download profile test test-slow lint ci fixture pipeline quality export export-gold release-draft all clean \
         cli job-render job-validate job-deploy job-run migrate \
-        dbt-build dbt-test-local dbt-docs analysis charts check-findings data-dictionary
+        dbt-build dbt-test-local dbt-docs analysis charts check-findings data-dictionary \
+        forecast-features forecast-baseline
 
 help:
 	@echo "make setup      install the uv environment and validate config/pipeline.yml"
@@ -36,6 +37,8 @@ help:
 	@echo "make charts     redraw the five charts in docs/images/ from docs/analysis_results/"
 	@echo "make check-findings  rerun the analysis queries and confirm every number in the docs still matches"
 	@echo "make data-dictionary  write docs/data_dictionary.md from the dbt docs"
+	@echo "make forecast-features  build the restoration-forecast features (ENGINE=duckdb uses DUCKDB_FILE, default the full build)"
+	@echo "make forecast-baseline  score the storm-family baseline on the test year, write docs/forecast_baseline.md"
 	@echo "make all        setup, download, test, pipeline, quality, dbt-build, export"
 	@echo "make clean      remove logs and Python caches (raw data is kept)"
 
@@ -144,6 +147,17 @@ check-findings:
 data-dictionary:
 	$(DBTRUN) docs generate --target databricks
 	$(PY) scripts/data_dictionary.py
+
+# Restoration-time forecast (D71): a separate stage after Gold. The baseline reads a DuckDB build
+# (scripts/build_duckdb.py --root data/raw --out build/duckdb/full.duckdb).
+FC_DUCKDB := $(if $(DUCKDB_FILE),$(DUCKDB_FILE),build/duckdb/full.duckdb)
+
+forecast-features:
+	$(PY) scripts/forecast_features.py --engine $(ENGINE) --duckdb-file $(FC_DUCKDB)
+
+forecast-baseline:
+	$(PY) scripts/forecast_features.py --engine duckdb --duckdb-file $(FC_DUCKDB)
+	$(PY) scripts/forecast_baseline.py --duckdb-file $(FC_DUCKDB)
 
 all: setup download test pipeline quality dbt-build export
 
