@@ -9,7 +9,7 @@ DUCKDB_ARG := $(if $(DUCKDB_FILE),--duckdb-file $(DUCKDB_FILE),)
 .PHONY: help setup download profile test test-slow lint ci fixture pipeline quality export export-gold release-draft all clean \
         cli job-render job-validate job-deploy job-run migrate \
         dbt-build dbt-test-local dbt-docs analysis charts check-findings data-dictionary \
-        forecast-features forecast-baseline
+        forecast-features forecast-baseline forecast-train forecast-evaluate
 
 help:
 	@echo "make setup      install the uv environment and validate config/pipeline.yml"
@@ -39,6 +39,8 @@ help:
 	@echo "make data-dictionary  write docs/data_dictionary.md from the dbt docs"
 	@echo "make forecast-features  build the restoration-forecast features (ENGINE=duckdb uses DUCKDB_FILE, default the full build)"
 	@echo "make forecast-baseline  score the storm-family baseline on the test year, write docs/forecast_baseline.md"
+	@echo "make forecast-train     tune on 2024, calibrate, retrain on 2022-2024; save models/restoration/ (ENGINE=duckdb|databricks)"
+	@echo "make forecast-evaluate  score once on 2025, write docs/forecast_results.md and gold_restoration_predictions"
 	@echo "make all        setup, download, test, pipeline, quality, dbt-build, export"
 	@echo "make clean      remove logs and Python caches (raw data is kept)"
 
@@ -158,6 +160,13 @@ forecast-features:
 forecast-baseline:
 	$(PY) scripts/forecast_features.py --engine duckdb --duckdb-file $(FC_DUCKDB)
 	$(PY) scripts/forecast_baseline.py --duckdb-file $(FC_DUCKDB)
+
+# Models (D72): train and evaluate read gold_restoration_features from the same engine.
+forecast-train:
+	$(PY) scripts/forecast_model.py train --engine $(ENGINE) --duckdb-file $(FC_DUCKDB)
+
+forecast-evaluate:
+	$(PY) scripts/forecast_model.py evaluate --engine $(ENGINE) --duckdb-file $(FC_DUCKDB)
 
 all: setup download test pipeline quality dbt-build export
 

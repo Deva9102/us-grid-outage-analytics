@@ -97,6 +97,30 @@ forecast:                       # D71: restoration-time forecast (sql/databricks
   train_years: [2022, 2023, 2024]   # time-based split, never random
   test_years: [2025]
   baseline_min_events: 30       # a storm family x region cell with fewer training events falls back to its family
+  # D72: models (scripts/forecast_model.py). Tune on train_years before validation_year, validate on
+  # validation_year, retrain on all train_years with the chosen settings, evaluate once on test_years.
+  validation_year: 2024
+  size_band_edges: [1000, 10000]  # outage size at the prediction moment: < 1,000, 1,000-9,999, 10,000+ out
+  model:
+    version: v1                   # bumped by hand when the model design changes; the config hash is appended
+    seed: 2071                    # every random step (early-stopping split, subsamples, permutation, bootstrap)
+    folder: models/restoration    # trained models, gitignored
+    hgb:                          # HistGradientBoostingRegressor(loss="quantile"), one model per quantile
+      grid:
+        learning_rate: [0.05, 0.1]
+        max_leaf_nodes: [15, 31, 63]
+        min_samples_leaf: [20, 100]
+      max_iter: 1000              # upper bound; early stopping picks the iterations while tuning
+      early_stopping: true
+      validation_fraction: 0.1    # early-stopping holdout, drawn from the tuning years only
+      n_iter_no_change: 20
+    linear:                       # QuantileRegressor (highs), one model per quantile
+      alpha: [0.0, 0.0001]        # L1 penalty grid
+      max_train_rows: 40000       # seeded subsample: the linear program grows with the rows
+    calibration_tolerance: 0.03   # conformal p90 adjustment when validation coverage is off by more than this
+    permutation_repeats: 5
+    permutation_rows: 20000       # seeded sample of test events for permutation importance
+    bootstrap_samples: 200        # paired bootstrap of the difference to the baseline
 
 export:                         # scripts/export_gold.py: CSVs for Power BI (D49)
   folder: data/gold_exports

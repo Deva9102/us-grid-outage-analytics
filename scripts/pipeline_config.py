@@ -140,6 +140,25 @@ def validate(cfg: dict) -> None:
     if max(train) >= min(test):
         raise ConfigError("forecast.test_years must all come after forecast.train_years (time-based split)")
     number("forecast.baseline_min_events", 1)
+    val = _require(cfg, "forecast.validation_year")
+    if val not in train or val != max(train) or val == min(train):
+        raise ConfigError("forecast.validation_year must be the last of forecast.train_years, with earlier years to tune on")
+    edges = _require(cfg, "forecast.size_band_edges")
+    if len(edges) != 2 or not 0 < edges[0] < edges[1]:
+        raise ConfigError("forecast.size_band_edges must be two increasing positive numbers")
+    if not isinstance(_require(cfg, "forecast.model.seed"), int):
+        raise ConfigError("forecast.model.seed must be an integer")
+    for key, values in _require(cfg, "forecast.model.hgb.grid").items():
+        if not values or not all(isinstance(v, int | float) and v > 0 for v in values):
+            raise ConfigError(f"forecast.model.hgb.grid.{key} must be a non-empty list of positive numbers")
+    if not _require(cfg, "forecast.model.linear.alpha"):
+        raise ConfigError("forecast.model.linear.alpha must list at least one value")
+    number("forecast.model.hgb.max_iter", 1)
+    number("forecast.model.hgb.validation_fraction", 0, 1, lo_open=True)
+    number("forecast.model.linear.max_train_rows", 1)
+    number("forecast.model.calibration_tolerance", 0, 1)
+    for key in ("permutation_repeats", "permutation_rows", "bootstrap_samples"):
+        number(f"forecast.model.{key}", 1)
     number("quality.row_count_tolerance", 0, 1)
     number("export.max_file_mb", 1)
     if not _require(cfg, "export.tables"):
