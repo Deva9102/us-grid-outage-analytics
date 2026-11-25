@@ -121,6 +121,15 @@ no longer matches (D68). Mart tables and columns are described in
   2024 and 2025 are not loaded (the official host is unreachable from my network, D25, D59), so the
   OE-417 cross-check covers 2022-2023 only.
 
+## Restoration-Time Forecast (in progress)
+
+I am adding an estimated-time-of-restoration forecast: two hours after an outage event starts,
+predict its total duration as a median (p50) and a 90th percentile (p90). Features come only from
+what is known at that moment (readings up to two hours, the storm active at the start, county size
+and county history from earlier years); tests prove no feature reads past it. I train on 2022-2024
+and test on 2025. The storm-family baseline is in [docs/forecast_baseline.md](docs/forecast_baseline.md);
+design choices are D71 in [docs/decisions.md](docs/decisions.md).
+
 ## Next Steps
 
 - Give Connecticut's nine planning regions customer denominators (Census planning-region

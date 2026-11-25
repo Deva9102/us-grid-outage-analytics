@@ -77,6 +77,7 @@ incrementally in D56). See `docs/data_profile.md`.
 | D68 | Analysis layer: queries on the marts only, storm families, numbers in the docs checked against the queries | Analysis | 2026-11-23 |
 | D69 | Two portability fixes: DOUBLE instead of FLOAT in the marts, no doubled quote in a Gold literal | Gold / Marts | 2026-11-23 |
 | D70 | Power BI handoff: summary marts committed as CSV, events as Parquet on a draft GitHub Release; `dim_year` added | Marts / Export | 2026-11-23 |
+| D71 | Restoration forecast: predict at event start + 2 h, eligible if still above threshold then; features known by then only; 2022-2024 train, 2025 test | Gold / Forecast | 2026-11-24 |
 
 ---
 
@@ -2606,6 +2607,90 @@ see. The analysis results now match exactly.
   marts still match Gold.
 - Export from Databricks: 13 summary CSVs (4.1 MB), the largest being `fct_county_reliability`
   with 12,217 rows. `fct_outage_events` is 602,355 rows (25.6 MB Parquet).
+
+## D71. Restoration-time forecast: prediction moment, eligible events, features and split
+
+**What:**
+- **Task.** At a fixed prediction moment, `event_start` + 2 hours (`forecast.prediction_hours`),
+  predict an outage event's total `duration_hours` as a p50 and a p90.
+- **Eligible events.** The county's reading at the prediction moment meets its event threshold
+  (D18), and the event runs past that moment, so the reading belongs to this event and not to a
+  later one. Left out:
+  - events below the threshold at that moment, even if a later reading revives them within the
+    1-hour gap rule (D17): at the prediction moment the outage does not look ongoing;
+  - events with `spans_empty_gap` (D64): their true length is unknown, so the target is unreliable.
+- **Split.** Train on 2022-2024, test on 2025, by `event_year` (UTC start year). Never random.
+  Set in `config/pipeline.yml` (`forecast`), with validation that every test year comes after
+  every training year.
+- **Features.** `gold_restoration_features` in `sql/databricks/04_gold_forecast_features.sql`,
+  rendered from config. Only information known at the prediction moment:
+  - **Readings:** from a 15-minute slot grid that stops at the prediction moment: customers out at
+    the start, the midpoint (1 h) and the prediction moment, growth (difference and ratio), and the
+    peak so far, raw and as a capped share of the D13 denominator. A collected slot without a row
+    is 0 (D3). A nationwide feed gap, or a reading inside a known dropout, is NULL.
+  - **Flags:** a feed gap so far (D10), and a dropout so far (D19). A dropout counts only when its
+    recovery reading is at or before the prediction moment, because D19 identifies a dropout only
+    once the feed recovers.
+  - **Storm at the start:** the most severe outage-capable NOAA storm (D41 order) whose D37/D42
+    window covers `event_start` and whose begin time is at or before the prediction moment.
+    Mapped to the D68 storm family through a new `gold_storm_family` table. A test keeps it equal
+    to `dim_storm_type`.
+  - **Calendar:** month, hour and weekday (0 = Monday) of the start, in the state's primary time
+    zone.
+  - **County:** census region, state, customers (D13) and the event threshold (D18).
+  - **County history:** event count, events per year, eligible event count, and median duration
+    of all and of eligible events. History uses only events of earlier years that had **ended
+    before the event's year began**: a Dec 31 outage still running on Jan 1 is not yet history.
+    History is NULL for 2022, which has no earlier year, and `history_years` (0-3) tells a model
+    how much history there is.
+- **Stage.** The forecast runs as a separate stage after Gold: `scripts/forecast_features.py`
+  (`make forecast-features`). It is not in `run_databricks.SQL_FILES` or the Databricks Job, so a
+  change to the forecast cannot stop the reliability pipeline. It has no row-count quality gate
+  yet.
+- **Dialect.** Two rewrites were added to `scripts/sql_dialect.py`:
+  - `from_utc_timestamp` becomes DuckDB `timezone()`;
+  - `weekday()` becomes `isodow() - 1`, because DuckDB's `weekday` counts from Sunday.
+- **Baseline.** `scripts/forecast_baseline.py` (`make forecast-baseline`) writes
+  `docs/forecast_baseline.md`. It uses training-year p50/p90 per storm family, and per storm
+  family x region. A cell with fewer than 30 training events (`forecast.baseline_min_events`)
+  falls back to its family, then to all events.
+
+**Why:**
+- **Prediction moment.** Two hours is when an estimated time of restoration is first useful to
+  customers, and most short blips are over by then: the median event lasts 1.5 hours, so
+  predicting at the start would mostly forecast noise.
+- **Eligibility.** A rule that can be checked at the moment itself, the reading then, avoids
+  choosing events with information from after it, such as "the event lasted more than 2 hours".
+- **Split.** A time split tests what a deployed model faces: a year it has not seen.
+- **History cut-off.** History is computed once per year from finished events, so it cannot carry
+  the current event or any outage still running.
+- **NOAA as a stand-in.** NOAA Storm Events records are published months later. Here they stand
+  in for the storm type an operator knows from NWS warnings at the time; the begin-time rule
+  keeps out storms that had not started yet.
+- **Denominator.** The D13 county denominator is a fixed county attribute set from 2022-2024. It
+  is not an outcome of any event, so I use it in every year.
+
+**Rows affected (DuckDB full data; Databricks identical by a checksum of rows and column sums
+per split):**
+- 227,147 of 602,355 events run past the prediction moment. 5,426 are below the threshold at that
+  moment and 13 span an empty gap, which leaves **221,708 eligible events**:
+  - 2022: 54,928;
+  - 2023: 53,105;
+  - 2024: 56,440;
+  - 2025: 57,235.
+- 36,682 eligible events have a storm at the start. The full-event match of D37 attributes
+  43,367 of them: the rest are matched only by storms that begin after the prediction moment, or
+  by overlap later in the event.
+- **Null rates:**
+  - history: 24.8-25.1%, almost all 2022 by design;
+  - `customers_out_at_mid`: 1.0% (dropouts and feed gaps);
+  - `customers` and `peak_share_so_far`: 0.2% (counties without a denominator, D9).
+- **Leakage tests** (`tests/test_forecast_features.py`):
+  - each kind of future information (later readings, a dropout recovering later, a storm
+    beginning later, a later feed gap, history from the event's own year or still running on
+    Jan 1, a longer event) must leave every feature unchanged;
+  - a twin just inside the moment must change the feature.
+  Making the SQL read up to `event_end` instead of the prediction moment fails them.
 
 ---
 
