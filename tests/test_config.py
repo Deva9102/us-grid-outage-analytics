@@ -11,6 +11,7 @@ import yaml
 
 import pipeline_config
 import sqlfluff_config
+from forecast_features import FORECAST_FILES
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SQL_DIR = REPO_ROOT / "sql" / "databricks"
@@ -41,7 +42,8 @@ def test_expected_tables_are_created_and_counted():
     expected = set(pipeline_config.load()["quality"]["expected_rows"])
     run_tables = {"gold_outage_events_rebuilt"}  # describes the run; no expected count (D56)
     created: set[str] = set()
-    for path in SQL_FILES:
+    # The forecast stage runs outside the pipeline and its quality gates (scripts/forecast_features.py, D71).
+    for path in (p for p in SQL_FILES if p.name not in FORECAST_FILES):
         created |= set(re.findall(r"^CREATE (?:OR REPLACE TABLE|TABLE IF NOT EXISTS) (\w+)", path.read_text(), re.M))
     assert expected <= created
     assert created - expected == run_tables
