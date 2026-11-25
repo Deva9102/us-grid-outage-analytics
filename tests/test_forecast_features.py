@@ -160,6 +160,13 @@ def test_prediction_slot_reading_must_belong_to_the_event():
     assert con.execute("SELECT COUNT(*) FROM gold_restoration_features WHERE event_id = ?", [EVENT]).fetchone()[0] == 0
 
 
+def test_no_eligible_history_counts_zero():
+    """Earlier events, none eligible: the eligible count is 0 on both engines, not NULL (D75)."""
+    con = build("UPDATE silver_outages SET customers_out = 50 WHERE reading_time = TIMESTAMP '2023-05-01 12:00'")
+    f = features(con)
+    assert (f["prior_event_count"], f["prior_eligible_event_count"]) == (2, 0)
+
+
 def test_sql_reads_no_slot_past_the_prediction_moment():
     """The only reading path is the slot grid, and it stops at prediction_time (static check of the SQL)."""
     sql = (duckdb_pipeline.SQL_DIR / FILE).read_text()

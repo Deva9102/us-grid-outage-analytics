@@ -27,8 +27,8 @@ Features with any NULL (all others are complete):
 |---|---|
 | `prior_eligible_median_duration_hours` | 25.1% |
 | `prior_median_duration_hours` | 25.1% |
-| `prior_eligible_event_count` | 25.1% |
 | `prior_events_per_year` | 24.8% |
+| `prior_eligible_event_count` | 24.8% |
 | `prior_event_count` | 24.8% |
 | `customers_out_at_mid` | 1.0% |
 | `customers` | 0.2% |

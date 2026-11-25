@@ -41,6 +41,8 @@ SELECT
     COUNT_IF(storm_family_at_start <> 'No storm matched')      AS with_storm,
     SUM(start_hour_local * 10 + start_weekday_local)           AS local_time,
     SUM(prior_event_count)                                     AS prior_events,
+    SUM(prior_eligible_event_count)                            AS prior_eligible_events,
+    COUNT(prior_eligible_event_count)                          AS prior_eligible_known,
     ROUND(CAST(SUM(prior_eligible_median_duration_hours) AS DECIMAL(38, 6)), 2) AS prior_median
 FROM gold_restoration_features
 GROUP BY split
@@ -89,7 +91,7 @@ def main() -> None:
     else:
         rows = build_databricks()
     print("checksum (split, events, duration, out_start, out_mid, out_prediction, peak, feed_gap, dropout, "
-          "with_storm, local_time, prior_events, prior_median):")
+          "with_storm, local_time, prior_events, prior_eligible_events, prior_eligible_known, prior_median):")
     for row in rows:
         print("  " + ", ".join(str(v) for v in row))
 

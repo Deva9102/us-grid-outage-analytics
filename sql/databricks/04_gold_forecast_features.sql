@@ -210,7 +210,8 @@ history AS (
         y.fips_code,
         y.event_year,
         COUNT(p.event_year)                                                                   AS prior_event_count,
-        COUNT_IF(p.was_eligible)                                                              AS prior_eligible_event_count,
+        -- COUNT, not COUNT_IF: DuckDB's COUNT_IF over only NULLs is NULL, Databricks' is 0 (D75)
+        COUNT(CASE WHEN p.was_eligible THEN 1 END)                                            AS prior_eligible_event_count,
         PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY p.duration_hours)                         AS prior_median_duration_hours,
         PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY CASE WHEN p.was_eligible THEN p.duration_hours END)
                                                                                               AS prior_eligible_median_duration_hours
