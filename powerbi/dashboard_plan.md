@@ -1,6 +1,6 @@
 # Dashboard plan
 
-Six pages, each answering one question. The model is in [data_model.md](data_model.md), the
+Seven pages, each answering one question. The model is in [data_model.md](data_model.md), the
 measures in [measures.md](measures.md) and the theme in [theme.json](theme.json) (View > Themes >
 Browse for themes). The findings behind each page are in [../docs/findings.md](../docs/findings.md).
 
@@ -134,3 +134,37 @@ which places are footnoted or restated?
 - Connecticut 2025 is reported by planning region and footnoted (D60).
 - OE-417 disturbance reports are used for 2022-2023 only (D59).
 - EAGLE-I misses outages under 15 minutes and is less reliable for small and rural utilities.
+
+## 7. Restoration forecast
+
+**Question:** Two hours into an outage, how well can its total length be forecast, and where is
+the forecast trustworthy?
+
+Data: `workspace.outages.gold_restoration_predictions` (one row per eligible event and model;
+`eval_split` = `validation` for 2024, `test` for 2025), related to `fct_outage_events` on
+`event_id` for the actual `duration_hours`, storm group and region. Feature importance comes from
+`docs/forecast_results.json` (`importance`), imported as a small table. Design: D71, D72; numbers:
+`docs/forecast_results.md`.
+
+| Visual | Fields |
+|---|---|
+| Scatter (log axes) | X `p50_hours`, Y actual `duration_hours`, filtered to `model = 'hgb'` and `eval_split = 'test'`; a y = x reference line |
+| Clustered bar: p90 coverage by storm family | Axis `dim_storm_type[storm_group]`, value [P90 Coverage] (share of events with actual <= `p90_hours`), legend `model`; a constant line at 90%; event count in the tooltip |
+| Card row | [P50 MAE Hours] and [P90 Coverage] for `hgb`, and the same for `baseline` |
+| Bar: feature importance | Axis `feature`, value `mae_p50_increase`, top 12, sorted descending |
+| Text box | The notes below |
+
+**Slicers:** `model` (single select, default `hgb`); `eval_split` (default `test`);
+`dim_state[census_region]`.
+
+**Measures (add to measures.md when built):** [P90 Coverage] = share of rows with
+`duration_hours <= p90_hours`; [P50 MAE Hours] = average of `ABS(duration_hours - p50_hours)`.
+
+**Text box:**
+- The forecast is made 2 hours after an outage starts, for outages still above their county
+  threshold then. It does not cover short blips.
+- Storm type comes from NOAA Storm Events, published months later; it stands in for the live NWS
+  warnings an operator would have. The "no storm features" model shows what the forecast is worth
+  without it.
+- Hurricane / tropical results rest on few events, and 2025 has too few to judge. Show the event
+  count next to every group.

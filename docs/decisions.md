@@ -78,6 +78,10 @@ incrementally in D56). See `docs/data_profile.md`.
 | D69 | Two portability fixes: DOUBLE instead of FLOAT in the marts, no doubled quote in a Gold literal | Gold / Marts | 2026-11-23 |
 | D70 | Power BI handoff: summary marts committed as CSV, events as Parquet on a draft GitHub Release; `dim_year` added | Marts / Export | 2026-11-23 |
 | D71 | Restoration forecast: predict at event start + 2 h, eligible if still above threshold then; features known by then only; 2022-2024 train, 2025 test | Gold / Forecast | 2026-11-24 |
+| D72 | Forecast scope: NOAA storm type as a stand-in for NWS warnings (plus a no-storm model), a separate stage outside the Job, hurricane results only indicative, scikit-learn not LightGBM | Forecast | 2026-11-24 |
+| D73 | Forecast models: log target, tune on 2024, retrain on 2022-2024, evaluate once on 2025; four models with p50 and p90 | Forecast | 2026-11-24 |
+| D74 | Forecast p90 calibration: conformal offset only when 2024 coverage is more than 3 points off; not needed (87.5-88.8%) | Forecast | 2026-11-24 |
+| D75 | `prior_eligible_event_count` counted with COUNT(CASE ...): DuckDB and Databricks disagreed on COUNT_IF over only NULLs | Gold / Forecast | 2026-11-24 |
 
 ---
 
@@ -2691,6 +2695,132 @@ per split):**
     Jan 1, a longer event) must leave every feature unchanged;
   - a twin just inside the moment must change the feature.
   Making the SQL read up to `event_end` instead of the prediction moment fails them.
+
+
+## D72. Restoration forecast scope: storm stand-in, separate stage, hurricane sample, library
+
+**What:**
+1. **NOAA storm type is a documented stand-in for live NWS warnings.** The storm features
+   (`storm_type_at_start`, `storm_family_at_start`, D71) come from NOAA Storm Events, which is
+   published months after the event. I keep them, and I also train and report the same gradient
+   boosting model without them (`hgb_no_storm`), so the effect of the stand-in is measured, not
+   assumed.
+2. **The forecast stays a separate stage outside the Databricks Job.** Features, training and
+   evaluation run from `make forecast-features`, `make forecast-train` and `make forecast-evaluate`.
+   They are not in `run_databricks.SQL_FILES` or `databricks.yml`.
+3. **Hurricane / tropical events cannot be evaluated on 2025.** 2025 has 4 eligible hurricane /
+   tropical events. Every breakdown in `docs/forecast_results.md` shows its event count, the
+   limitation is stated there and in the model card, and the 2024 hurricane results (304 events)
+   are reported as indicative only, because 2024 is the validation year that chose the settings.
+4. **Library: scikit-learn `HistGradientBoostingRegressor`, not LightGBM.** It needs no extra
+   system libraries (LightGBM on macOS needs OpenMP from outside the uv environment), and it has
+   quantile loss, native categorical features and native missing values. Added with `uv add
+   scikit-learn` (1.9.1).
+
+**Why:**
+1. An operator would know the storm type from NWS warnings at the time, but this project has no
+   archive of those warnings. Without the no-storm model, a reader could not tell how much of the
+   forecast rests on information that is only a proxy.
+2. A failing or slow model run must never stop the reliability pipeline, and the Free Edition Job
+   should stay SQL only.
+3. Four events give no usable estimate; a single long hurricane outage would swing every metric.
+4. The project rule is uv only, with nothing installed globally.
+
+**Rows affected:** none in the pipeline. 2025 hurricane / tropical: 4 of 57,235 test events;
+2024: 304 of 56,440 validation events.
+
+## D73. Restoration forecast models: protocol, models and design choices
+
+**What:**
+- **Target.** `log(duration_hours)`; every prediction is converted back to hours and every error
+  is in hours. Quantiles survive a monotone transform, so a log-scale p90 is the p90 in hours.
+- **Protocol** (`scripts/forecast_model.py`, settings in `forecast` of `config/pipeline.yml`):
+  1. tune: fit on 2022-2023, score every setting by pinball loss in hours on 2024 (`validation_year`);
+  2. calibrate p90 on 2024 (D74);
+  3. retrain on 2022-2024 with the chosen settings;
+  4. evaluate once on 2025. 2025 is never used to tune, calibrate or choose anything.
+  Every fit and the calibration pass a guard that stops the run if a test year is present, and the
+  run records the years each step saw.
+- **Models, each with a separate p50 and p90 model:**
+  - `baseline`: storm family x region training quantiles (D71), refitted on the same years as the
+    others at each step;
+  - `linear`: `QuantileRegressor` (highs solver), one-hot storm family, region, state, month, hour and
+    weekday; log of the skewed counts, signed log of growth; median imputation with missing
+    indicators; L1 penalty grid `[0, 0.0001]`;
+  - `hgb`: `HistGradientBoostingRegressor(loss="quantile")`, native categoricals (storm type, storm
+    family, region, state) and native missing values; grid of learning rate `[0.05, 0.1]`, max leaf
+    nodes `[15, 31, 63]`, min samples per leaf `[20, 100]`; up to 1,000 iterations with early
+    stopping on a seeded 10% of the tuning years;
+  - `hgb_no_storm`: `hgb` without the two storm features (D72).
+- **Retrain iterations.** The retrained `hgb` models use the number of iterations early stopping
+  chose while tuning, with early stopping off, so the retrain has no random holdout.
+- **Features left out:** `history_years`, `prior_event_count` and `prior_eligible_event_count`. They
+  grow with the years of history, so 2025 (three years of history) would lie outside every
+  training value. I use the per-year rates instead, and add `prior_eligible_events_per_year`
+  (eligible count / history years), computed in Python.
+- **Linear subsample.** The linear model fits on a seeded subsample of 40,000 training events
+  (`forecast.model.linear.max_train_rows`): one fit on 40,000 rows takes about 85 seconds and the
+  linear program grows with the rows.
+- **Quantile crossing.** p90 is raised to p50 where it falls below it.
+- **Seeds.** One seed (`forecast.model.seed`) drives the early-stopping split, the subsample, the
+  permutation importance and the bootstrap. Training twice gives identical predictions (test).
+- **Outputs.** The trained models go to `models/restoration/<version>/` (gitignored) with
+  `metadata.json` holding the version, the config hash, the data fingerprint and the years each
+  step saw. Version = `forecast.model.version` + the first 8 characters of a hash of the `forecast`
+  settings, the feature lists and the scikit-learn version. `gold_restoration_predictions` holds
+  p50 and p90 for each eligible 2024 event (tuning models) and 2025 event (retrained models), for
+  each model.
+
+**Why:**
+- Durations run from 2 hours to over 1,900, so errors on the log scale treat a 3-hour and a
+  30-hour outage in proportion, while the reported errors stay in hours.
+- Tuning on 2024 and testing on 2025 mirrors deployment: a model chosen on the last year it has
+  seen, then used on the next one.
+- A separate model per quantile is the plain way to get two quantiles out of scikit-learn.
+
+**Rows affected (DuckDB full data; Databricks identical by the data fingerprint):** tune 108,033
+events (2022-2023), validation 56,440 (2024), retrain 164,473 (2022-2024), test 57,235 (2025).
+Quantile crossings fixed on 2025: `hgb_no_storm` 1, others 0. Results in
+`docs/forecast_results.md`: on 2025, `hgb` has p50 MAE 3.712 h against 4.215 h for the baseline
+(-11.9%) and p90 pinball loss 1.691 against 2.102 (-19.6%), with p90 coverage 89.8%.
+
+## D74. Restoration forecast p90 calibration: conformal offset only when needed
+
+**What:** After tuning, I check p90 coverage on 2024 for each model. If it is more than 3
+percentage points from 90% (`forecast.model.calibration_tolerance`), the p90 gets a split-conformal
+offset: the ceil((n + 1) x 0.9)-th smallest `log(actual / p90)` among the 2024 events, applied as a
+multiplying factor to every later p90. Coverage is then checked on 2025.
+
+Result: 2024 coverage was baseline 88.8%, linear 88.3%, `hgb` 87.5%, `hgb_no_storm` 87.5%, all
+within 3 points, so **no adjustment was applied**. 2025 coverage without adjustment: 90.8%, 90.8%,
+89.8% and 90.0%. The factors the rule would have applied (1.077 to 1.112) are recorded in
+`docs/forecast_results.json`.
+
+**Why:** A p90 is a promise that 9 in 10 outages end by then; a validation year off by a few
+points is within year-to-year noise, and correcting it would overfit 2024. The offset uses 2024
+only, never 2025. The factor comes from the tuning models while it is applied to the retrained
+models, a known approximation of split conformal; it is also why the rule is used only for a
+clear miss.
+
+**Rows affected:** none adjusted. Coverage is checked on 56,440 validation and 57,235 test events.
+
+
+## D75. Forecast history count: one engine-neutral COUNT (fix to D71)
+
+**What:** `prior_eligible_event_count` in `gold_restoration_features` is now
+`COUNT(CASE WHEN p.was_eligible THEN 1 END)` instead of `COUNT_IF(p.was_eligible)`. The checksum
+printed by `scripts/forecast_features.py` now also sums this column and counts its non-NULL values.
+A synthetic test covers a county with earlier events but none eligible.
+
+**Why:** The model run on Databricks data gave a different data fingerprint from the DuckDB run
+(D73). The only difference was this column: for a county with earlier events of which none was
+eligible, DuckDB's `COUNT_IF` returns NULL and Databricks returns 0. 0 is correct. The D71 checksum
+did not include the column, so the difference went unnoticed. This is the same kind of fix as D69.
+
+**Rows affected:** 612 events change from NULL to 0, all after 2022. The null share of
+`prior_eligible_event_count` falls from 25.1% to 24.8% (the same as `prior_event_count`). After
+the fix the checksums match on both engines (train 164,473 events, 109,545 with a known count and
+6,546,632 in total; test 57,235, 57,235 and 6,465,603), and so do the model data fingerprints.
 
 ---
 
