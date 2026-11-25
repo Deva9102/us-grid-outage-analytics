@@ -15,6 +15,8 @@ small set of rewrites, so local tests exercise the real code:
     element_at(x, i)                  -> list_extract(x, i)
     array_sort(x)                     -> list_sort(x)
     to_utc_timestamp(x, tz)           -> CAST(timezone(tz, x) AS TIMESTAMP)   (session TimeZone = UTC)
+    from_utc_timestamp(x, tz)         -> timezone(tz, CAST(x AS TIMESTAMPTZ))  (UTC wall time to local, D71)
+    weekday(x)                        -> (isodow(x) - 1)    (0 = Monday on both engines, D71)
     x RLIKE 'p'                       -> regexp_matches(x, 'p')
 
 Statements must have the form  CREATE OR REPLACE TABLE <name> COMMENT '...' AS <query>;
@@ -110,6 +112,8 @@ REWRITES = [
     ("array_sort", lambda a: f"list_sort({a[0]})"),
     ("raise_error", lambda a: f"error({a[0]})"),
     ("to_utc_timestamp", lambda a: f"CAST(timezone({a[1]}, {a[0]}) AS TIMESTAMP)"),
+    ("from_utc_timestamp", lambda a: f"timezone({a[1]}, CAST({a[0]} AS TIMESTAMPTZ))"),
+    ("weekday", lambda a: f"(isodow({a[0]}) - 1)"),
 ]
 
 

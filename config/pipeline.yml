@@ -88,6 +88,16 @@ utilities:                      # D32, D39
     year: 2022
     label: 'National Grid (sold to PPL in May 2022)'
 
+forecast:                       # D71: restoration-time forecast (sql/databricks/04_gold_forecast_features.sql)
+  prediction_hours: 2           # predict at event_start + this many hours (multiple of 0.25, at least 0.5)
+  # Eligible events: the reading at the prediction moment still meets the county's event threshold
+  # (D18) and is not a known feed dropout (D19), so the outage is visibly ongoing then. Events with
+  # spans_empty_gap (D64) are left out: their true length is unknown.
+  quantiles: [0.5, 0.9]         # p50 (point estimate) and p90 (planning upper bound)
+  train_years: [2022, 2023, 2024]   # time-based split, never random
+  test_years: [2025]
+  baseline_min_events: 30       # a storm family x region cell with fewer training events falls back to its family
+
 export:                         # scripts/export_gold.py: CSVs for Power BI (D49)
   folder: data/gold_exports
   max_file_mb: 50                 # a table larger than this is split by its year column

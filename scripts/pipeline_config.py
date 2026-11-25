@@ -126,6 +126,20 @@ def validate(cfg: dict) -> None:
     for key in ("eversource_ids", "national_grid_ids"):
         if not all(isinstance(v, str) for v in _require(cfg, f"utilities.{key}")):
             raise ConfigError(f"utilities.{key} must be quoted strings (EIA utility numbers)")
+    pred = number("forecast.prediction_hours", 0.5)
+    if (pred * 60) % (2 * RUN_MINUTES):
+        # The midpoint reading (half the prediction moment) must fall on a 15-minute run.
+        raise ConfigError(f"forecast.prediction_hours must be a multiple of {2 * RUN_MINUTES} minutes")
+    quantiles = _require(cfg, "forecast.quantiles")
+    if quantiles != [0.5, 0.9]:
+        raise ConfigError("forecast.quantiles must be [0.5, 0.9]: the baseline reports p50 and p90")
+    train, test = _require(cfg, "forecast.train_years"), _require(cfg, "forecast.test_years")
+    for key, ys in (("train_years", train), ("test_years", test)):
+        if not ys or sorted(set(ys)) != ys or not set(ys) <= set(years):
+            raise ConfigError(f"forecast.{key} must be a sorted, non-empty subset of years")
+    if max(train) >= min(test):
+        raise ConfigError("forecast.test_years must all come after forecast.train_years (time-based split)")
+    number("forecast.baseline_min_events", 1)
     number("quality.row_count_tolerance", 0, 1)
     number("export.max_file_mb", 1)
     if not _require(cfg, "export.tables"):
@@ -170,6 +184,10 @@ def derive(cfg: dict) -> dict:
     f = cfg["footnotes"]
     f["capped_share_pct"] = _pct(f["capped_share"])
     f["peak_to_customers_label"] = f"{f['peak_to_customers']:g}"
+    fc = cfg["forecast"]
+    fc["prediction_minutes"] = int(fc["prediction_hours"] * 60)
+    fc["mid_minutes"] = fc["prediction_minutes"] // 2
+    fc["prediction_runs"] = fc["prediction_minutes"] // RUN_MINUTES
     u = cfg["utilities"]
     u["size_band_small"], u["size_band_medium"], u["size_band_large"] = u["size_band_edges"]
     u["eversource_ids_sql"] = _sql_list(u["eversource_ids"])
