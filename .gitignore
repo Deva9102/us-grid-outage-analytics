@@ -24,3 +24,5 @@ dbt/target/
 dbt/dbt_packages/
 dbt/profiles.yml
 dbt/.user.yml
+# Trained restoration-forecast models (D72)
+models/
